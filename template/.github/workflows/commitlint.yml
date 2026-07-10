@@ -1,0 +1,25 @@
+name: commitlint
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+jobs:
+  lint-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title (Conventional Commits)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Allowed types: feat, fix, perf, refactor, docs, test, build, ci, chore, revert, style
+          # Optional scope in parens, optional ! for breaking, then ': <subject>'
+          # With squash-only merges the PR title becomes the mainline commit
+          # message, so this single check governs commit-message hygiene.
+          if ! echo "$PR_TITLE" | grep -Eq '^(feat|fix|perf|refactor|docs|test|build|ci|chore|revert|style)(\([a-z0-9._/-]+\))?!?: .+'; then
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat(api): add version endpoint' or 'fix!: drop deprecated field'."
+            echo "Got: $PR_TITLE"
+            exit 1
+          fi
+          echo "OK: PR title follows Conventional Commits."

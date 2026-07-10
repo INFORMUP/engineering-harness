@@ -1,0 +1,5 @@
+{
+  "_readme": "Per-package line-coverage floors (total.lines.pct). CI's 'Coverage ratchet' step fails a PR that drops a package below its floor (0.1pt tolerance). Keys must match the package names your test workflow passes to coverage-ratchet.sh. Raising the floor is a normal reviewed diff — bump it when your PR raises coverage. Lowering it requires the coverage-override label (senior judgment). null = not yet seeded: the ratchet reports the measured value and passes — pin the floors from your first CI run.",
+  "backend": null,
+  "frontend": null
+}

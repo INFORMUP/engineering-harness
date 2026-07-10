@@ -1,0 +1,178 @@
+name: PR Gates
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # size-override is a senior-eng judgment call. Make it binding by adding
+      # a ruleset that restricts who can apply labels, or leave honor-system —
+      # either way the label is visible in the PR audit trail.
+      - name: Size gate
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'size-override') }}
+        run: |
+          set -euo pipefail
+
+          # Pilot thresholds — tune per repo as real PR sizes come in.
+          MAX_LINES=500
+          MAX_FILES=5
+
+          # Patterns are matched with bash [[ == ]], where * spans '/'.
+          # Add stack-specific generated paths (ORM migrations, generated
+          # clients, snapshots) — anything reviewed-by-construction.
+          EXCLUDE_GLOBS=(
+            "*package-lock.json"
+            "*.snap"
+            "docs/**"
+            # "*prisma/migrations/*"        # example: Prisma stacks
+            # "*poetry.lock"                # example: Python stacks
+          )
+
+          is_excluded() {
+            local path="$1"
+            local glob
+            for glob in "${EXCLUDE_GLOBS[@]}"; do
+              # shellcheck disable=SC2053
+              if [[ "$path" == $glob ]]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          total_lines=0
+          total_files=0
+
+          while IFS=$'\t' read -r added deleted path; do
+            [[ -z "$path" ]] && continue
+            if is_excluded "$path"; then
+              continue
+            fi
+            total_files=$((total_files + 1))
+            # Binary files render as "-\t-\tpath" in --numstat; count the file
+            # but contribute 0 lines.
+            if [[ "$added" == "-" || "$deleted" == "-" ]]; then
+              continue
+            fi
+            total_lines=$((total_lines + added + deleted))
+          done < <(git diff --numstat "origin/${{ github.base_ref }}...HEAD")
+
+          if (( total_lines > MAX_LINES || total_files > MAX_FILES )); then
+            echo "FAIL: PR changes $total_lines lines across $total_files files (limits: $MAX_LINES lines / $MAX_FILES files)"
+            exit 1
+          else
+            echo "PASS: PR changes $total_lines lines across $total_files files (limits: $MAX_LINES lines / $MAX_FILES files)"
+          fi
+
+      - name: Template check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Keep these in lockstep with .github/PULL_REQUEST_TEMPLATE.md
+            const REQUIRED_SECTIONS = [
+              '## What / Why',
+              '## Verification evidence',
+              '## Docs touched',
+            ];
+
+            const body = context.payload.pull_request.body || '';
+            const lines = body.split('\n');
+            const missing = [];
+
+            for (const heading of REQUIRED_SECTIONS) {
+              const startIdx = lines.findIndex((line) => line.trim() === heading);
+              if (startIdx === -1) {
+                missing.push(heading);
+                continue;
+              }
+
+              let endIdx = lines.length;
+              for (let i = startIdx + 1; i < lines.length; i++) {
+                if (lines[i].startsWith('## ')) {
+                  endIdx = i;
+                  break;
+                }
+              }
+
+              let section = lines.slice(startIdx + 1, endIdx).join('\n');
+              section = section.replace(/<!--[\s\S]*?-->/g, '');
+              section = section.trim();
+
+              if (!section) {
+                missing.push(heading);
+              }
+            }
+
+            if (missing.length > 0) {
+              core.setFailed(`PR template is missing content in: ${missing.join(', ')}`);
+            } else {
+              console.log('PASS: all required PR template sections are present and filled in.');
+            }
+
+      # Anti-cheat for the other gates: suppressions added by a PR must carry
+      # an inline "-- reason: <justification>" (CLAUDE.md Definition of Done),
+      # and focused tests (.only) never merge. Scans ADDED lines only, so
+      # existing code is grandfathered. Deliberately grep-based, not AST-based:
+      # a commented-out suppression that trips it still reads as intent, and
+      # the '-- reason:' escape hatch works everywhere. Pair with lint-level
+      # rules where the toolchain supports them (for TS: ban-ts-comment with a
+      # descriptionFormat, reportUnusedDisableDirectives — see the harness
+      # README) and keep this as the catch-all at PR time.
+      - name: Suppression gate
+        run: |
+          set -euo pipefail
+
+          BASE="origin/${{ github.base_ref }}"
+
+          # JS/TS defaults. For Python stacks extend with tokens like
+          # noqa, "type: ignore", "pragma: no cover", pytest.mark.skip.
+          SUPPRESS_RE='eslint-disable|@ts-(ignore|nocheck|expect-error)|prettier-ignore|\b(describe|it|test)\.(skip|todo|fixme)\(|(istanbul|v8|c8) ignore'
+          FOCUS_RE='\b(describe|it|test)\.only\('
+
+          violations=0
+          current_file=""
+
+          # Markdown/docs can't suppress anything (and may quote the tokens);
+          # this workflow contains the patterns as literals.
+          while IFS= read -r line; do
+            case "$line" in
+              +++\ b/*)
+                current_file="${line#+++ b/}"
+                continue
+                ;;
+              +++*|---*)
+                continue
+                ;;
+              +*)
+                added="${line#+}"
+                if echo "$added" | grep -qE "$FOCUS_RE"; then
+                  echo "::error file=$current_file::focused test (.only) must not be committed: $added"
+                  violations=$((violations + 1))
+                elif echo "$added" | grep -qE "$SUPPRESS_RE"; then
+                  if ! echo "$added" | grep -q -- '-- reason:'; then
+                    echo "::error file=$current_file::suppression without '-- reason: <justification>': $added"
+                    violations=$((violations + 1))
+                  fi
+                fi
+                ;;
+            esac
+          done < <(git diff --unified=0 "$BASE...HEAD" -- \
+            ':!docs' ':!*.md' ':!.github/workflows/pr-gates.yml')
+
+          if (( violations > 0 )); then
+            echo "FAIL: $violations unjustified suppression(s). Add '-- reason: <why>' inline (temporary suppressions link a tracked task), or remove the suppression."
+            exit 1
+          fi
+          echo "PASS: no unjustified suppressions in added lines."

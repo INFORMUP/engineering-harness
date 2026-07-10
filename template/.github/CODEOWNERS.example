@@ -1,0 +1,20 @@
+# Rename to CODEOWNERS and replace the placeholders.
+#
+# INVARIANT: every path must list AT LEAST TWO owners. GitHub does not count
+# self-approval, so once the ruleset's require_code_owner_review is on, a sole
+# code owner can never merge their own PRs — the repo deadlocks.
+#
+# The last matching line wins. Route sensitive paths (CI, agent config, schema,
+# the style guide) explicitly even though * already covers them — explicit
+# entries survive future * changes.
+
+*                              @SENIOR-1 @SENIOR-2
+/.github/                      @SENIOR-1 @SENIOR-2
+/CLAUDE.md                     @SENIOR-1 @SENIOR-2
+/.claude/                      @SENIOR-1 @SENIOR-2
+/docs/style.md                 @SENIOR-1 @SENIOR-2
+# Stack-specific sensitive paths — schema, lint/test configs (coverage
+# excludes are a suppression vector), infra:
+# /backend/prisma/schema.prisma  @SENIOR-1 @SENIOR-2
+# /**/eslint.config.js           @SENIOR-1 @SENIOR-2
+# /**/vitest.config.*            @SENIOR-1 @SENIOR-2

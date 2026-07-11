@@ -43,9 +43,12 @@ Manual follow-ups (the parts that are per-stack by design):
        git config core.hooksPath .githooks
  5. pr-gates.yml: adjust EXCLUDE_GLOBS (generated paths) and, for non-JS
     stacks, extend SUPPRESS_RE (noqa, type: ignore, pragma: no cover...).
- 6. TS stacks: add the lint-level suppression rules (see README §Suppressions).
- 7. Create the 'size-override' and 'coverage-override' labels:
+ 6. Reuse surface: set SURFACE_DIRS in scripts/generate-inventory.mjs and the
+    matching REUSE_PATHS in pr-gates.yml (lockstep!), then seed the index:
+       node scripts/generate-inventory.mjs
+ 7. TS stacks: add the lint-level suppression rules (see README §Suppressions).
+ 8. Create the 'size-override' and 'coverage-override' labels:
        gh label create size-override; gh label create coverage-override
- 8. Make it all binding:
+ 9. Make it all binding:
        scripts/install-ruleset.sh ORG/REPO <your-check-names>
 EOF

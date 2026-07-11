@@ -50,11 +50,14 @@ TaskFlow/
 │   └── workflows/
 │       ├── test.yml                 KEEP (quarantine issue-#20 e2e specs)
 │       ├── quality.yml              NEW: lint, typecheck, build, coverage ratchet
-│       ├── pr-gates.yml             NEW: size gate, plan gate, template check, suppression scan
+│       ├── pr-gates.yml             NEW: size gate, plan gate, template check, suppression scan, reuse gate (§3.12)
 │       ├── claude-review.yml        NEW: automated first-pass review
 │       ├── doc-drift.yml            NEW: weekly staleness check
+│       ├── duplication.yml          NEW: advisory copy-paste detection (§3.12)
 │       ├── audit.yml                NEW: monthly codebase audit (§3.11)
 │       └── metrics.yml              NEW: monthly metrics issue
+├── docs/inventory.md                NEW: GENERATED reuse-surface index (§3.12)
+├── scripts/generate-inventory.mjs   NEW: builds docs/inventory.md from exports
 ├── docs/
 │   ├── README.md                    NEW: documentation taxonomy + ownership index (§3.8.1)
 │   ├── style.md                     NEW: house style guide — HUMAN-EDITED ONLY (§3.1)
@@ -72,7 +75,7 @@ TaskFlow/
 
 **Definition of Done** (agents treat as a checklist; `claude-review` re-verifies):
 
-> Every implementation PR: (1) lint + typecheck clean; (2) tests for changed behavior including edge cases per the `write-tests` skill, proven by revert-the-fix; (3) bug fixes include a regression test that failed before the fix (§3.7); (4) docs updated per `doc-map.yml`; (5) Conventional-Commit title; (6) ≤ 500 changed lines and ≤ 5 files (excluding lockfiles, `prisma/migrations/`, `docs/`); (7) merged plan linked if any protected path is touched; (8) **no new suppression directive without an inline justification** (§3.6).
+> Every implementation PR: (1) lint + typecheck clean; (2) tests for changed behavior including edge cases per the `write-tests` skill, proven by revert-the-fix; (3) bug fixes include a regression test that failed before the fix (§3.7); (4) docs updated per `doc-map.yml`; (5) Conventional-Commit title; (6) ≤ 500 changed lines and ≤ 5 files (excluding lockfiles, `prisma/migrations/`, `docs/`); (7) merged plan linked if any protected path is touched; (8) **no new suppression directive without an inline justification** (§3.6); (9) **new reusable symbols declared and justified against the reuse inventory** — duplication is a stated decision, never an accident (§3.12).
 
 **Style — two-level inheritance, human-owned.** `docs/style.md` is the **house style guide**; it declares the Google TypeScript Style Guide as its parent and records only house deviations and additions. Precedence: house rule > Google rule > linter default. **Agents never edit `docs/style.md`** — updates are human-led only. Enforced three ways: a `CLAUDE.md` prohibition ("propose style changes in an issue; never edit docs/style.md"), a CODEOWNERS entry, and a `pr-gates` check that fails any PR touching `docs/style.md` unless a human authored the change (senior-applied `style-update` label). Mechanical rules from both levels are encoded in the ESLint flat configs + Prettier (§3.4); judgment aspects (naming, comment quality, API design) are checked by `claude-review` against the house guide first, Google's second.
 
@@ -223,6 +226,7 @@ PR review sees the codebase one diff at a time; audits see what no diff shows �
 | Test health | skipped-test inventory, slowest/flakiest tests, coverage JSON | coverage cold spots ranked by churn (untested *and* frequently changed = risk) |
 | Suppression debt | full `#ignore` inventory (§3.6 scan, repo-wide) | expired justifications; suppressions whose issue refs are closed |
 | Dead code & deps | `knip`/`depcheck`, unused exports | safe-to-delete vs. load-bearing-but-unimported |
+| Duplication | `jscpd` repo-wide report + inventory | semantic clustering — "these four helpers are one function"; consolidation candidates (§3.12) |
 | Complexity hotspots | churn × file size ranking | refactor candidates worth an IMP task, with rationale |
 | Docs accuracy | drift-job history, `last-verified` ages | deep pass beyond the weekly diff-scoped check |
 
@@ -231,6 +235,47 @@ Output: `docs/audits/YYYY-MM.md` (committed via PR, senior approves) — finding
 **Quarterly deep audit** (senior-driven, on their Max subscription — consistent with §3.10): the senior runs the `audit` skill locally with full context plus `/code-review ultra` over the highest-risk areas the monthly reports flagged, and reviews the quarter's ADRs against what actually got built. Deliverable: same report format, plus proposed CLAUDE.md/lint-rule changes — the codify-the-findings flywheel applied to the whole codebase instead of one PR.
 
 `.claude/skills/audit/SKILL.md` encodes the dimension checklist, scanner commands, report format, and task-filing conventions, so monthly automation, quarterly deep-dives, and any ad-hoc "audit X" request all produce comparable, diffable reports.
+
+### 3.12 Duplication control — reuse before rebuild (NEW)
+
+Agents re-implement helpers that already exist; that's the failure mode, and
+it compounds (six date formatters, three permission checks). Duplication is
+sometimes the right trade-off — but it must be an **intentional, visible
+decision**, not an accident of not looking. Four layers, same shape as the
+rest of the harness:
+
+1. **A generated reuse inventory, referenced at planning time (prevention).**
+   `scripts/generate-inventory.mjs` walks the repo's *reuse surface* —
+   services, utils, composables, shared libs (globs configured at the top of
+   the script) — and emits `docs/inventory.md`: every exported
+   function/class/const with its one-line doc summary, grouped by module.
+   Generated, never hand-edited, same pattern as TaskFlow's `permissions.md`
+   (IMP-138): a CI step regenerates it and fails on diff, so it cannot go
+   stale. The planning stage consumes it: the plan template gains a **Reuse
+   audit** field ("what existing code covers parts of this; what you searched;
+   what you're deliberately not reusing and why"), and CLAUDE.md instructs
+   agents to consult the inventory + grep before writing any new helper.
+2. **A reuse gate at PR time (visibility).** The PR template gains a required
+   `## Reuse` section ("None — no new reusable symbols" is valid). A
+   `pr-gates.yml` step detects **new exported symbols in reuse-surface paths**
+   in the diff; if any exist and the Reuse section claims "None", the gate
+   fails — you cannot add to the reuse surface without saying what you
+   checked. The justification's *adequacy* is judgment (below), its *presence*
+   is mechanical.
+3. **Detection (two kinds).** Mechanical clones: `duplication.yml` runs
+   `jscpd` (token-level copy-paste detector) — advisory first, threshold
+   tightened as the baseline shrinks. Semantic re-implementations (different
+   tokens, same job): the `claude-review` contract gains an explicit check —
+   compare new symbols against the inventory and flag functionality overlap;
+   unjustified duplication is a request-changes.
+4. **Burn-down (audit dimension).** The monthly audit gains a duplication
+   dimension: repo-wide `jscpd` + a semantic clustering pass over the
+   inventory ("these four helpers are one function"); accepted findings become
+   consolidation IMP tasks, and repeat offenders graduate into CLAUDE.md rules
+   or lint bans — the standard flywheel.
+
+Tunables per repo: reuse-surface globs (script header), jscpd threshold, and
+whether the reuse gate is advisory or binding during rollout.
 
 ## 4. Enforcement matrix
 
@@ -248,6 +293,7 @@ Output: `docs/audits/YYYY-MM.md` (committed via PR, senior approves) — finding
 | **Plans archived after landing** | post-merge archive job + drift-job aging check | Hard (automated) | — |
 | ADR for major decisions | `claude-review` flags + senior review | Soft | Senior judgment |
 | Docs updated with code | `doc-map.yml` warn + `claude-review` sufficiency check + weekly drift job | Soft | Senior judgment |
+| **Duplication is intentional, never accidental** | generated `docs/inventory.md` (drift-checked) + plan Reuse audit + PR reuse gate (mechanical presence) + `claude-review` overlap check + `jscpd` | Hard¹ (gate/drift) / Soft (adequacy) | Senior judgment via PR justification |
 | House style (Google-inherited) | ESLint/Prettier (mechanical) + `claude-review` (judgment) | Mixed | Lint config change via PR (senior-owned) |
 | **Style guide edited by humans only** | CLAUDE.md prohibition + CODEOWNERS + `style-update` label check | Hard¹ | Senior applies label |
 | Destructive-command awareness | `guard-destructive.sh` → impact statement → human approves | Soft by design | Human approval is the mechanism |
@@ -260,7 +306,7 @@ Output: `docs/audits/YYYY-MM.md` (committed via PR, senior approves) — finding
 - **Phase 0 — foundations (~½ day):** squash-only setting; PR template; CODEOWNERS; CLAUDE.md DoD + style-pointer sections; `docs/README.md` taxonomy; `docs/style.md` skeleton (human fills deviations); quarantine issue-#20 e2e specs (with §3.6 justifications); GitHub Team upgrade decision.
 - **Phase 1 — mechanical gates (~1 day):** `quality.yml` (lint/typecheck/build); coverage baseline measured from current state + ratchet; `pr-gates.yml` (size + template + **suppression scan**, incl. the lint-level suppression rules); extend `.githooks/` + `setup-dev.sh`; one-time Prettier commit + `.git-blame-ignore-revs`.
 - **Phase 2 — Claude in the loop (~1 day):** `.claude/settings.json` + both hooks; `write-tests` skill; `claude-review.yml` (advisory, subscription token, incl. suppression verdicts + **bug-fix protocol**); extend `/resolve-bug`; backfill ADRs 0001–0005; `docs/architecture.md`.
-- **Phase 3 — plan gate, docs system & drift (~1 day):** `plan-required.yml` + plan gate; `/design` command extension (plan PRs); **plan archive job**; `doc-map.yml` + coupling warn; `doc-drift.yml` + `last-verified` stamping; `metrics.yml`; flip `claude-review` to required.
+- **Phase 3 — plan gate, docs system & drift (~1 day):** `plan-required.yml` + plan gate; `/design` command extension (plan PRs); **plan archive job**; `doc-map.yml` + coupling warn; `doc-drift.yml` + `last-verified` stamping; `metrics.yml`; **duplication control (§3.12): inventory generator + drift check, PR Reuse section + reuse gate, advisory `jscpd`**; flip `claude-review` to required.
 - **Phase 4 — audits (~½ day):** `audit` skill; `audit.yml` monthly; first baseline audit run → its findings seed the pilot backlog alongside the decomposed mega-PR features.
 - **Pilot:** land the decomposed mega-PR features through the harness, one at a time. After each: any recurring review finding becomes a CLAUDE.md rule, lint rule, or skill update — that feedback loop *is* the pilot's deliverable.
 

@@ -17,6 +17,7 @@ new row in the same PR.
 | `/OVERVIEW.md` | Product + architecture orientation for humans and agents | Agent | Senior review | Architecture materially changes | Living |
 | `docs/style.md` | House style guide (inherits a public parent guide); records deviations and judgment rules only | **Humans only** — agents never edit (see file header) | Senior review | Human-led decision, via `style-update`-labeled PR | Living |
 | Domain reference docs | Current truth about one domain (schema, API, permissions, …) | Contributor's agent, **in the same PR as the code change** | PR review | The code they describe changes | Living |
+| `docs/inventory.md` | **Generated** reuse-surface index (exported services/utils/composables + one-line summaries) — consult before writing any new helper | `scripts/generate-inventory.mjs` — **never hand-edit** | Drift-checked in CI | Reuse-surface exports change | Generated |
 | `docs/adr/` | One Architecture Decision Record per major decision: context, options, rationale, consequences | Contributor's agent | Senior (CODEOWNERS) | New dependency, schema change, cross-module design, auth change | Immutable once accepted; superseded, never edited |
 | `docs/plans/` | Pre-implementation contracts for plan-required work | Planning workflow | Senior (plan-PR merge = approval) | Plan-required paths touched | Draft → approved → implemented → `archive/` |
 | `docs/audits/` | Dated codebase-audit reports | Audit agent | Senior triage | Scheduled cadence | Append-only |

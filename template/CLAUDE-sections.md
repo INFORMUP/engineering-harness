@@ -17,6 +17,7 @@ Every implementation PR must satisfy all of these before requesting review. Agen
 5. **Conventional-Commit PR title** (enforced by the `commitlint` workflow; with squash-only merges the title becomes the mainline commit message).
 6. **Atomic size**: ≤ 500 changed lines and ≤ 5 files (lockfiles, generated paths, and `docs/` excluded — enforced by the `pr-gates` workflow). Split before you ask for `size-override`.
 7. **No unexplained suppressions.** Any lint-disable, type-suppression, skipped test, or coverage-ignore added by the PR carries an inline `-- reason: <justification>` (temporary ones link a tracked task). Focused tests (`.only`) never merge.
+8. **Reuse before rebuild.** Before writing a new helper, service, or class, consult [docs/inventory.md](docs/inventory.md) (the generated reuse index) and grep for existing implementations. New exported symbols in the reuse surface must be declared in the PR's *Reuse* section with what you searched and why existing code doesn't fit — deliberate duplication is acceptable *when stated*; accidental duplication is a request-changes. Extending an existing module beats creating a parallel one.
 
 ## Code Style
 - **[docs/style.md](docs/style.md) is the house style guide** — it inherits from a public parent guide and records only house deviations and judgment rules. Precedence: formatter → linter → house guide → parent guide.

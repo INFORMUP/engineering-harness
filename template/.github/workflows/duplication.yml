@@ -1,0 +1,32 @@
+name: Duplication
+
+# Advisory copy-paste detection (harness spec §3.12). jscpd catches
+# token-level clones; semantic re-implementations are the automated review's
+# job (it compares new symbols against docs/inventory.md). Advisory by
+# design while the baseline shrinks — remove `|| true` to make it binding,
+# and tighten --threshold as the audit burns duplication down.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  jscpd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Copy-paste detection (advisory)
+        run: |
+          # EDIT PER REPO: scan the same reuse surface + main source trees.
+          npx --yes jscpd \
+            --min-tokens 50 \
+            --threshold 3 \
+            --reporters consoleFull \
+            --ignore "**/*.test.*,**/__tests__/**,**/node_modules/**,**/dist/**" \
+            backend/src frontend/src || true

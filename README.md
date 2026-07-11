@@ -21,6 +21,7 @@ Design rationale: [docs/PROPOSAL.md](docs/PROPOSAL.md) ·
 | Conventional-Commit history | PR-title lint + squash-only merges | `commitlint.yml` + ruleset |
 | Docs have owners and lifecycles | taxonomy | `docs/README.md` |
 | Style is human-governed, agent-cited | house style guide (agents never edit) | `docs/style.md` |
+| Duplication is intentional, never accidental | generated reuse inventory (drift-checked) + PR `## Reuse` section + reuse gate on new exports + advisory `jscpd` | `scripts/generate-inventory.mjs` + `pr-gates.yml` + `duplication.yml` |
 | Agents generate conforming work | Definition of Done + Mistakes flywheel | `CLAUDE-sections.md` → target `CLAUDE.md` |
 | All of the above is **binding**, not advisory | repository ruleset: PR + 1 code-owner review + required checks + no force-push | `rulesets/` + `scripts/install-ruleset.sh` |
 
@@ -63,7 +64,12 @@ The template is stack-agnostic; these five integration points are yours:
    `pragma: no cover`, `pytest.mark.skip`).
 4. **Pre-commit hook contents** — `.githooks/pre-commit` is a skeleton; keep
    it to seconds. Hooks are the fast path, CI is the guarantee.
-5. **Lint-level suppression rules** (TS stacks) — in each `eslint.config.js`:
+5. **Reuse surface** — set `SURFACE_DIRS` in `scripts/generate-inventory.mjs`
+   and the matching `REUSE_PATHS` env in `pr-gates.yml`'s Reuse gate (keep them
+   in lockstep), run the generator once to seed `docs/inventory.md`, and adjust
+   `duplication.yml`'s scan paths. The inventory drift-check self-activates
+   when the script exists.
+6. **Lint-level suppression rules** (TS stacks) — in each `eslint.config.js`:
 
    ```js
    {

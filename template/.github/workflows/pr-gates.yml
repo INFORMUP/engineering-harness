@@ -85,6 +85,7 @@ jobs:
               '## What / Why',
               '## Verification evidence',
               '## Docs touched',
+              '## Reuse',
             ];
 
             const body = context.payload.pull_request.body || '';
@@ -176,3 +177,50 @@ jobs:
             exit 1
           fi
           echo "PASS: no unjustified suppressions in added lines."
+
+      # Duplication control (harness spec §3.12): you cannot grow the reuse
+      # surface while claiming you didn't. New exported symbols in the
+      # reuse-surface paths require the PR's "## Reuse" section to say what
+      # was searched and why existing code doesn't fit — the template check
+      # already guarantees the section exists; this step rejects "None" when
+      # the diff proves otherwise. Adequacy of the justification is reviewer
+      # judgment; presence is mechanical.
+      - name: Reuse gate
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          # Keep in lockstep with SURFACE_DIRS in scripts/generate-inventory.mjs.
+          REUSE_PATHS: "backend/src/services backend/src/constants frontend/src/composables frontend/src/utils frontend/src/api"
+        run: |
+          set -euo pipefail
+
+          BASE="origin/${{ github.base_ref }}"
+
+          new_exports=$(git diff --unified=0 "$BASE...HEAD" -- $REUSE_PATHS ':!*.test.*' ':!*__tests__*' \
+            | grep -E '^\+\s*export\s+(async\s+)?(function|class|const|let|enum)\s+' || true)
+
+          if [[ -z "$new_exports" ]]; then
+            echo "PASS: no new exported symbols in the reuse surface."
+            exit 0
+          fi
+
+          reuse_section=$(printf '%s\n' "$PR_BODY" | awk '/^## Reuse[[:space:]]*$/{f=1;next} /^## /{f=0} f' \
+            | sed 's/<!--.*-->//g' | tr -d '[:space:]')
+
+          if [[ -z "$reuse_section" || "$reuse_section" == None* || "$reuse_section" == none* ]]; then
+            echo "$new_exports" | head -10
+            echo "FAIL: this PR adds exported symbols to the reuse surface (above), but the '## Reuse' section is empty or says 'None'."
+            echo "State what you searched (docs/inventory.md + grep), the closest existing code, and why it doesn't fit — deliberate duplication is fine if it's declared."
+            exit 1
+          fi
+          echo "PASS: new reuse-surface exports are declared in the Reuse section (adequacy is reviewed, not scanned)."
+
+      # The inventory can't go stale: regenerate and diff. Skipped gracefully
+      # until the repo adopts the generator.
+      - name: Inventory drift
+        run: |
+          set -euo pipefail
+          if [[ ! -f scripts/generate-inventory.mjs ]]; then
+            echo "SKIP: scripts/generate-inventory.mjs not present in this repo yet."
+            exit 0
+          fi
+          node scripts/generate-inventory.mjs --check

@@ -197,11 +197,15 @@ A `pr-gates` step warns when matched code changes lack a change to the mapped do
 
 Weekly cron. Inputs: the week's merged PR diffs, `doc-map.yml`, and each doc's `last-verified` frontmatter. Procedure: map merged changes → affected docs → read doc against the new reality → verdict per doc. Outputs: one open `doc-drift:<doc>` issue per stale doc (updated in place, never duplicated; specific about *which sections* drifted), and a bot commit stamping `last-verified` on clean docs. Drift issues are filed into the TaskFlow spine as IMP tasks during weekly triage, so doc debt flows through the same pipeline as code work.
 
-### 3.9 Governance: merge strategy, CODEOWNERS, branch protection
+### 3.9 Governance: merge strategy, CODEOWNERS, rulesets (REVISED post-pilot — final design)
 
-- **Squash-only merges** (repo setting, available today): currently all three methods are enabled; squash-only makes the commitlint-validated PR title the mainline commit message and keeps history atomic-PR-shaped.
-- **CODEOWNERS:** `* @<senior>`, with explicit entries for `/docs/adr/`, `/docs/plans/`, `/docs/style.md`, `/docs/README.md`, `/CLAUDE.md`, `/.claude/`, `/.github/`, `backend/prisma/schema.prisma`, and the gate-relevant configs (`**/eslint.config.js`, `**/vitest.config.*`, `**/tsconfig*.json`) per §3.6.3.
-- **Constraint found during this design:** the repo is **private on a free GitHub plan** — branch protection, rulesets, required checks, and CODEOWNERS enforcement are all unavailable (API returns 403; this is why `enforce-staging-gate.yml` exists as a CI-level workaround). Until resolved, every gate above runs and reports but a merge can technically ignore it. **Recommendation: upgrade the org to GitHub Team (~$4/user/mo)** — it converts the entire harness from advisory to binding and is the single highest-leverage line item in the budget (Decision 1).
+- **Squash-only merges**: the commitlint-validated PR title becomes the mainline commit message and history stays atomic-PR-shaped. Set both as a repo setting and in the `main-review` ruleset (`allowed_merge_methods`).
+- **Two rulesets, deliberately split** (pilot-hardened; the original single-ruleset design let admins merge red builds and push straight to main):
+  - **`main-integrity`** — required status checks, linear history, no force-push, no branch deletion. **Zero bypass actors**: nobody, admins included, can merge failing CI.
+  - **`main-review`** — 1 approving **CODEOWNER** review, review-thread resolution, stale-approval dismissal on push, squash-only. Repo admins may bypass **this ruleset only, and only through a PR** (`gh pr merge --admin --squash`) — the sanctioned merge path for the sole senior's own PRs, since GitHub forbids self-approval.
+- **CODEOWNERS = exactly the seniors (usually one).** `* @<senior>` plus explicit entries for `/docs/adr/`, `/docs/plans/`, `/docs/style.md`, `/docs/README.md`, `/CLAUDE.md`, `/.claude/`, `/.github/`, the schema, and the gate-relevant configs (`**/eslint.config.js`, `**/vitest.config.*`, `**/tsconfig*.json`) per §3.6.3. A bare approval-count rule (any collaborator) lets two juniors merge each other's work; a junior second-owner dissolves the gate the same way (pilot tried and reverted it). Document the invariant in the CODEOWNERS header itself.
+- **Plan prerequisite:** rulesets/required checks/CODEOWNERS enforcement need GitHub Team (~$4/user/mo) on private repos — resolved for the pilot (Decision 1); the free-plan fallback is advisory-only gates.
+- **Required checks must run on every PR:** a workflow skipped by a path filter never creates its check run, and `main-integrity` has no bypass to unstick the wait — so repo-wide checks (e.g. `format`) must not sit behind `paths-ignore` (see `quality.yml.example`).
 
 ### 3.10 Cost controls & metrics — subscription-first (REVISED)
 
@@ -297,9 +301,10 @@ whether the reuse gate is advisory or binding during rollout.
 | House style (Google-inherited) | ESLint/Prettier (mechanical) + `claude-review` (judgment) | Mixed | Lint config change via PR (senior-owned) |
 | **Style guide edited by humans only** | CLAUDE.md prohibition + CODEOWNERS + `style-update` label check | Hard¹ | Senior applies label |
 | Destructive-command awareness | `guard-destructive.sh` → impact statement → human approves | Soft by design | Human approval is the mechanism |
-| No direct pushes to main | Branch protection | **Blocked** | Requires GitHub Team (Decision 1) |
+| No direct pushes / no red merges to main | `main-integrity` ruleset (zero bypass actors) | Hard — unbypassable | None (by design) |
+| Senior review on every junior PR | `main-review` ruleset + sole-senior CODEOWNERS | Hard | `--admin` (PR-mode, senior's own PRs; cannot waive checks) |
 
-¹ "Hard" = CI fails. Truly binding only once required checks exist (Decision 1); until then, socially enforced red-means-stop.
+¹ "Hard" = CI fails, made binding by the `main-integrity` required-checks rule (GitHub Team prerequisite, Decision 1).
 
 ## 5. Build order (each phase independently shippable)
 

@@ -1,20 +1,35 @@
-# Rename to CODEOWNERS and replace the placeholders.
+# Rename to CODEOWNERS and replace the placeholder.
 #
-# INVARIANT: every path must list AT LEAST TWO owners. GitHub does not count
-# self-approval, so once the ruleset's require_code_owner_review is on, a sole
-# code owner can never merge their own PRs — the repo deadlocks.
+# ENFORCED once the main-review ruleset is installed: a PR into main needs an
+# approving review from an owner listed here — an approval from any other
+# collaborator does not satisfy the gate.
 #
-# The last matching line wins. Route sensitive paths (CI, agent config, schema,
-# the style guide) explicitly even though * already covers them — explicit
-# entries survive future * changes.
+# PHILOSOPHY (learned on the TaskFlow pilot): list EXACTLY ONE owner — the
+# senior engineer — per path. Every other write-access collaborator is a
+# junior contributing agent-assisted PRs, and the point of this file is that a
+# junior's approval cannot clear another junior's PR. Adding a second owner to
+# "unblock" self-approval hands that person the power to approve every other
+# junior's work, dissolving the gate for everyone at once.
+#
+# The self-approval deadlock is real — GitHub forbids approving your own PR,
+# so the senior's own PRs will always read BLOCKED/REVIEW_REQUIRED. That is
+# expected, not a misconfiguration. Their merge path (and only theirs):
+#     gh pr checks <PR>                    # must be green — this is unbypassable
+#     gh pr merge <PR> --admin --squash    # waives ONLY the review rule
+# The main-integrity ruleset has no bypass actors, so --admin still cannot
+# merge red CI. (If your org has TWO true seniors, two owners is fine — the
+# rule is "owners = seniors", not "owners = 1".)
+#
+# The last matching line wins. Route sensitive paths explicitly even though *
+# already covers them — explicit entries survive future * changes.
 
-*                              @SENIOR-1 @SENIOR-2
-/.github/                      @SENIOR-1 @SENIOR-2
-/CLAUDE.md                     @SENIOR-1 @SENIOR-2
-/.claude/                      @SENIOR-1 @SENIOR-2
-/docs/style.md                 @SENIOR-1 @SENIOR-2
+*                              @YOUR-SENIOR
+/.github/                      @YOUR-SENIOR
+/CLAUDE.md                     @YOUR-SENIOR
+/.claude/                      @YOUR-SENIOR
+/docs/style.md                 @YOUR-SENIOR
 # Stack-specific sensitive paths — schema, lint/test configs (coverage
 # excludes are a suppression vector), infra:
-# /backend/prisma/schema.prisma  @SENIOR-1 @SENIOR-2
-# /**/eslint.config.js           @SENIOR-1 @SENIOR-2
-# /**/vitest.config.*            @SENIOR-1 @SENIOR-2
+# /backend/prisma/schema.prisma  @YOUR-SENIOR
+# /**/eslint.config.js           @YOUR-SENIOR
+# /**/vitest.config.*            @YOUR-SENIOR

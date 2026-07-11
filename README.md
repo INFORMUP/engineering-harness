@@ -23,7 +23,7 @@ Design rationale: [docs/PROPOSAL.md](docs/PROPOSAL.md) ·
 | Style is human-governed, agent-cited | house style guide (agents never edit) | `docs/style.md` |
 | Duplication is intentional, never accidental | generated reuse inventory (drift-checked) + PR `## Reuse` section + reuse gate on new exports + advisory `jscpd` | `scripts/generate-inventory.mjs` + `pr-gates.yml` + `duplication.yml` |
 | Agents generate conforming work | Definition of Done + Mistakes flywheel | `CLAUDE-sections.md` → target `CLAUDE.md` |
-| All of the above is **binding**, not advisory | repository ruleset: PR + 1 code-owner review + required checks + no force-push | `rulesets/` + `scripts/install-ruleset.sh` |
+| All of the above is **binding**, not advisory | **two** repository rulesets: `main-integrity` (required checks, linear history, no force-push — **no bypass actors, admins included**) + `main-review` (squash-only, thread resolution, 1 CODEOWNER review — PR-mode admin waiver for the sole senior's own PRs) | `rulesets/` + `scripts/install-ruleset.sh` |
 
 Overrides are deliberate and visible: `size-override` / `coverage-override`
 labels (senior judgment, audit-trailed), repo-admin ruleset bypass for
@@ -43,9 +43,14 @@ scripts/install.sh ~/src/your-repo
 scripts/install-ruleset.sh ORG/your-repo backend,frontend,gates,lint-pr-title
 ```
 
-**Deadlock warning:** `require_code_owner_review` is on by default and GitHub
-doesn't count self-approval — CODEOWNERS must list **≥2 people per path**, or
-pass `--no-codeowner-review` first and re-run after fixing CODEOWNERS.
+**CODEOWNERS = exactly the seniors (usually one).** GitHub doesn't count
+self-approval, so the sole senior's own PRs will always read
+`BLOCKED/REVIEW_REQUIRED` — that's expected. Their merge path is
+`gh pr merge --admin --squash` after green checks: the ruleset split makes
+`--admin` waive **only** the review rule (`main-integrity` has no bypass
+actors, so red CI stays unmergeable). Do **not** add a junior as a second
+owner to "fix" the deadlock — that lets them approve every other junior's
+work. Learned the hard way on the pilot (TaskFlow #318 → reverted in #319).
 
 ## The contract your repo provides
 
@@ -81,8 +86,13 @@ The template is stack-agnostic; these five integration points are yours:
          "ts-nocheck": true,
          minimumDescriptionLength: 12,
        }],
+       // Advisory complexity signal (pilot-validated): warn-level, threshold at
+       // SonarJS's default; measure your p95 first so it fires only on outliers.
+       "sonarjs/cognitive-complexity": ["warn", 15],
      },
    }
+   // With Prettier, end the config with eslint-config-prettier (must stay
+   // LAST) so ESLint stops fighting the formatter.
    ```
 
 ## Operating principles (the short version)
@@ -108,7 +118,26 @@ The template is stack-agnostic; these five integration points are yours:
 - **Phase 4 — audits:** monthly scanner+synthesis audit, quarterly deep audit;
   findings become tracked tasks.
 
-Pilot learnings worth keeping: the suppression gate flagged its own PR on its
-first CI run (config comment quoted a token — proof it scans real diffs), and
-both coverage floors were pinned from CI's own measurements rather than
-aspirational targets.
+Pilot learnings worth keeping:
+
+- The suppression gate flagged its own PR on its first CI run (a config
+  comment quoted a token) — proof it scans real diffs.
+- Coverage floors were pinned from CI's own measurements, never aspirational
+  targets.
+- The governance split (`main-integrity`/`main-review`) came from real holes:
+  a single ruleset with an always-on admin bypass let admins merge red builds
+  and push straight to main, and a bare 1-approval rule let any two juniors
+  merge each other's work.
+- **Teach your agent commands the gates** (pilot PR "teach /implement the PR
+  gates it keeps tripping"): every gate an agent trips repeatedly should be
+  encoded into the command/skill that generates the work, not just enforced
+  after the fact.
+- The senior consolidating a deliberately-duplicated helper at merge time
+  (task-links' access guard → shared `_guards.ts`) is the reuse loop working:
+  declared duplication in, consolidation decision out.
+- Prettier sweeps may need 2–3 whole-tree `--write` passes to converge; loop
+  until `--check` is clean before committing, and record the sweep SHA in
+  `.git-blame-ignore-revs`.
+- A required check must run on **every** PR: a workflow skipped by a path
+  filter never creates its check run, and with no bypass actors nothing can
+  unstick the wait (see `quality.yml.example`'s `format` job).

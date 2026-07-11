@@ -1,0 +1,126 @@
+# Reference implementation of the per-stack quality workflow (advisory lint/
+# build/format), adapted from the TaskFlow pilot. Rename to quality.yml and
+# EDIT PER REPO: package dirs, commands, and the paths-filter map.
+#
+# Design notes carried over from the pilot:
+# - No workflow-level `paths-ignore`: the `format` job runs `prettier --check .`
+#   repo-wide, and a workflow skipped by a path filter never creates its check
+#   runs — so a required `format` check would wait forever on docs-only PRs.
+#   Per-package jobs are gated by the `changes` job instead.
+# - Keep jobs advisory (not in the required-checks list) until their baseline
+#   is clean; promote to required via install-ruleset.sh afterwards. The pilot
+#   promoted `format` once the one-time Prettier sweep landed.
+# - Prettier gotcha from the pilot: some tree states need 2–3 whole-tree
+#   `--write` passes to converge — loop until `--check` is clean before
+#   committing a sweep.
+
+name: Quality
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/quality.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/quality.yml'
+
+  # Deliberately not gated on the changes filter — repo-wide by design.
+  format:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npx --yes prettier --check .
+
+  backend-lint:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - working-directory: backend
+        run: npm ci --prefer-offline --no-audit --fund=false
+      - working-directory: backend
+        run: npm run lint
+
+  backend-build:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - working-directory: backend
+        run: npm ci --prefer-offline --no-audit --fund=false
+      - working-directory: backend
+        run: npm run build
+
+  frontend-lint:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --fund=false
+      - working-directory: frontend
+        run: npm run lint
+
+  frontend-build:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --fund=false
+      - working-directory: frontend
+        run: npm run build

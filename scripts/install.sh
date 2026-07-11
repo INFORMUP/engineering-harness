@@ -32,7 +32,9 @@ cat <<EOF
 Copied $copied file(s), skipped $skipped existing.
 
 Manual follow-ups (the parts that are per-stack by design):
- 1. .github/CODEOWNERS.example → rename to CODEOWNERS, fill ≥2 owners per path.
+ 1. .github/CODEOWNERS.example → rename to CODEOWNERS; list exactly the
+    senior engineer(s) — usually ONE. See the file header for why a second
+    non-senior owner dissolves the review gate.
  2. Splice template CLAUDE-sections.md into the repo's root CLAUDE.md,
     then DELETE CLAUDE-sections.md from the target.
  3. Wire your test workflow: run tests with a json-summary coverage reporter,

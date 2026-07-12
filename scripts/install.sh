@@ -45,7 +45,9 @@ Manual follow-ups (the parts that are per-stack by design):
     examples), then activate hooks:
        ./install-pre-commit-hooks.sh
     Add the session-setup note to CLAUDE.md so agents run it too (see
-    CLAUDE-sections.md's Commit Workflow).
+    CLAUDE-sections.md's Commit Workflow). Agents working in git worktrees
+    should also run ./setup-worktree.sh (edit its PACKAGES list) so the
+    hook's whole-repo gates have node_modules to run against.
  5. pr-gates.yml: adjust EXCLUDE_GLOBS (generated paths) and, for non-JS
     stacks, extend SUPPRESS_RE (noqa, type: ignore, pragma: no cover...).
  6. Reuse surface: set SURFACE_DIRS in scripts/generate-inventory.mjs and the

@@ -3,10 +3,15 @@
 # EDIT PER REPO: package dirs, commands, and the paths-filter map.
 #
 # Design notes carried over from the pilot:
-# - No workflow-level `paths-ignore`: the `format` job runs `prettier --check .`
-#   repo-wide, and a workflow skipped by a path filter never creates its check
-#   runs — so a required `format` check would wait forever on docs-only PRs.
-#   Per-package jobs are gated by the `changes` job instead.
+# - No workflow-level `paths-ignore` — the skip semantics differ by level, and
+#   it matters once checks are REQUIRED (pilot-verified on a probe PR):
+#     * a workflow skipped by a trigger-level path filter creates NO check
+#       runs → a required context waits forever as `expected`, and a
+#       zero-bypass ruleset has no way to unstick it;
+#     * a JOB skipped by a job-level `if:` still reports a SKIPPED check run,
+#       which SATISFIES the required context.
+#   So: gate per-package jobs on the `changes` job below (safe even as
+#   required checks), and keep repo-wide jobs like `format` ungated.
 # - Keep jobs advisory (not in the required-checks list) until their baseline
 #   is clean; promote to required via install-ruleset.sh afterwards. The pilot
 #   promoted `format` once the one-time Prettier sweep landed.

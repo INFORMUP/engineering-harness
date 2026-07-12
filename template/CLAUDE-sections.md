@@ -24,8 +24,8 @@ Every implementation PR must satisfy all of these before requesting review. Agen
 - **Agents never edit `docs/style.md`.** Propose style changes as a tracked task instead; humans decide and land them via a `style-update`-labeled PR.
 
 ## Commit Workflow
-- Run the affected package's tests before committing.
-- Git hooks live in `.githooks/`. After cloning, run `git config core.hooksPath .githooks` to activate them. Hooks are the fast path; CI is the guarantee.
+- **Session setup:** run `./install-pre-commit-hooks.sh` before your first commit in a session (idempotent). It activates the git hooks in `.githooks/`, so commits get the same formatting / type-check / reuse-inventory-sync gates CI enforces — caught locally instead of as a red build.
+- Run the affected package's tests before committing. Hooks are the fast path; CI is the guarantee.
 - No `--no-verify` and no force-push.
 
 ## Mistakes

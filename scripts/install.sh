@@ -41,8 +41,11 @@ Manual follow-ups (the parts that are per-stack by design):
     then call .github/scripts/coverage-ratchet.sh <package-key> from each
     package dir. Keys must match .github/coverage-baseline.json (floors ship
     null — pin them from your first CI run's reported numbers).
- 4. Edit .githooks/pre-commit for your stack; activate hooks with:
-       git config core.hooksPath .githooks
+ 4. Edit .githooks/pre-commit for your stack (typecheck slots are commented
+    examples), then activate hooks:
+       ./install-pre-commit-hooks.sh
+    Add the session-setup note to CLAUDE.md so agents run it too (see
+    CLAUDE-sections.md's Commit Workflow).
  5. pr-gates.yml: adjust EXCLUDE_GLOBS (generated paths) and, for non-JS
     stacks, extend SUPPRESS_RE (noqa, type: ignore, pragma: no cover...).
  6. Reuse surface: set SURFACE_DIRS in scripts/generate-inventory.mjs and the

@@ -1,25 +1,41 @@
 #!/usr/bin/env bash
 # Fast-path checks at commit time. CI remains the guarantee — this exists so
 # malformed work never leaves the machine. Activate with:
-#   git config core.hooksPath .githooks
+#   ./install-pre-commit-hooks.sh   (idempotent; run once per session)
 #
-# TEMPLATE: replace the package blocks with your stack's checks. Keep each
-# block cheap (seconds, not minutes) — expensive suites belong in CI.
+# PRINCIPLE (pilot-learned): each block MIRRORS a CI check, same tool, same
+# version — a commit that passes the hook passes the corresponding required
+# status check. Keep blocks cheap (seconds); expensive suites belong in CI.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-# --- typecheck (adjust per package) -----------------------------------------
+# Keep docs/inventory.md (the reuse-surface index) in sync automatically:
+# regenerate from the working tree and stage it, so a commit touching the
+# reuse surface can't leave the index stale (CI drift-checks it; this spares
+# a red build). No-ops when nothing changed. Guarded so the hook works on
+# branches predating the generator.
+if [[ -f "$ROOT/scripts/generate-inventory.mjs" ]]; then
+  echo "==> Regenerating reuse inventory (docs/inventory.md)..."
+  (cd "$ROOT" && node scripts/generate-inventory.mjs)
+  git -C "$ROOT" add docs/inventory.md
+fi
+
+# Mirror the CI `format` job with the root-pinned formatter version.
+# Requires a root package.json with a format:check script (Prettier setups).
+if [[ -f "$ROOT/package.json" ]] && grep -q '"format:check"' "$ROOT/package.json"; then
+  echo "==> Checking formatting (Prettier)..."
+  (cd "$ROOT" && npm run format:check)
+fi
+
+# --- typecheck (EDIT PER STACK) ----------------------------------------------
+# Vue/TS gotcha from the pilot: a bare `vue-tsc --noEmit` against a
+# solution-style tsconfig.json (empty `files: []`, only `references`) checks an
+# EMPTY program — it always passes and catches nothing. Use build mode (`-b`)
+# so the real project references are checked.
 # echo "==> Backend type-check..."
 # (cd "$ROOT/backend" && npx tsc --noEmit)
 # echo "==> Frontend type-check..."
-# (cd "$ROOT/frontend" && npx vue-tsc --noEmit)
-
-# --- lint staged files (optional, fast) -------------------------------------
-# STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|vue|js)$' || true)
-# if [[ -n "$STAGED" ]]; then
-#   echo "==> Linting staged files..."
-#   npx eslint --fix $STAGED && git add $STAGED
-# fi
+# (cd "$ROOT/frontend" && npx vue-tsc -b)
 
 echo "==> Pre-commit checks passed."

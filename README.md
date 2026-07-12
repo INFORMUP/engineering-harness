@@ -138,6 +138,17 @@ Pilot learnings worth keeping:
 - Prettier sweeps may need 2–3 whole-tree `--write` passes to converge; loop
   until `--check` is clean before committing, and record the sweep SHA in
   `.git-blame-ignore-revs`.
-- A required check must run on **every** PR: a workflow skipped by a path
-  filter never creates its check run, and with no bypass actors nothing can
-  unstick the wait (see `quality.yml.example`'s `format` job).
+- Required-check skip semantics differ by level (pilot-verified on a probe
+  PR): a workflow skipped by a trigger-level path filter creates **no** check
+  runs — the required context waits forever and no bypass can unstick it — but
+  a **job-level** `if:` skip still reports a `SKIPPED` run, which *satisfies*
+  the required context. Gate per-package jobs at the job level; never
+  path-filter the workflow (see `quality.yml.example`).
+- Type-check what you think you're type-checking: a bare `vue-tsc --noEmit`
+  against a solution-style tsconfig (empty `files`, only `references`) checks
+  an empty program and always passes. Use `vue-tsc -b`. The pilot's pre-commit
+  "type-check" passed for weeks while catching nothing.
+- Pre-commit blocks should **mirror CI checks** — same tool, same pinned
+  version — so a commit that passes the hook passes the required check
+  (the template hook auto-regenerates the reuse inventory and mirrors the
+  `format` job for exactly this reason).

@@ -28,6 +28,11 @@ Every implementation PR must satisfy all of these before requesting review. Agen
 - Run the affected package's tests before committing. Hooks are the fast path; CI is the guarantee.
 - No `--no-verify` and no force-push.
 
+## Schema conventions
+- **Every Prisma column carries a `///` doc comment.** Every model field that maps to a real DB column — including FK scalar columns (`organizationId String`) — gets a `///` doc comment that spells out any acronyms and states units (e.g. cents, milliseconds, percent). Relation navigation fields aren't columns and need no comment.
+- **`///`, not `//`.** Only a `///` documentation comment rides into the generated client (as JSDoc) and can be mirrored to a Postgres `COMMENT ON COLUMN` so the description is readable straight from `psql \d+`. Prisma Migrate does not emit those `COMMENT ON COLUMN` statements itself — add them by hand in the migration when you want DB-level visibility. A plain `//` reaches neither.
+- **The gate is diff-scoped.** The `pr-gates` workflow fails only on columns a PR *adds or modifies* without a `///` comment; pre-existing uncommented columns are grandfathered. Enforce the new; don't boil the ocean.
+
 ## Mistakes
 <!-- The codify-the-findings flywheel. When a review finding or debugging
      session reveals a repo-specific gotcha, append one bullet here:

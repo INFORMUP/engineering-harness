@@ -224,3 +224,11 @@ jobs:
             exit 0
           fi
           node scripts/generate-inventory.mjs --check
+
+      # Every new/changed Prisma column must carry a `///` doc comment (spell out
+      # acronyms and units). Diff-scoped: existing columns are grandfathered, so
+      # only the lines this PR touches are enforced. The script self-skips (exit
+      # 0) when no `*.prisma` files changed, so this is a no-op in repos without
+      # Prisma. Uses the runner's preinstalled Node; no setup-node needed.
+      - name: Prisma column comments
+        run: node .github/scripts/schema-comment-check.mjs

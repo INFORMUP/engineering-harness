@@ -5,8 +5,8 @@
  * Fails only when a PR ADDS or MODIFIES a model field (a real DB column) in a
  * `*.prisma` schema without a `///` doc comment. Pre-existing uncommented
  * columns are grandfathered — the author only "owns" the lines the diff
- * actually touches. This mirrors the philosophy of diff-scoped-lint.js and
- * diff_scoped_complexity.py: enforce the new, don't boil the ocean.
+ * actually touches. Same diff-scoped philosophy as the suppression and reuse
+ * gates in pr-gates.yml: enforce the new, don't boil the ocean.
  *
  * Why `///` (triple slash) and not `//`: only `///` is a Prisma *documentation*
  * comment. It rides into the generated client as JSDoc and can be synced to a
@@ -29,10 +29,6 @@
  * diff line numbers and the parsed schema always agree.
  */
 import { execFileSync } from "node:child_process";
-
-const PRISMA_SCALARS = new Set([
-  "String", "Boolean", "Int", "BigInt", "Float", "Decimal", "DateTime", "Json", "Bytes",
-]);
 
 function git(args) {
   return execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });

@@ -33,6 +33,10 @@ Every implementation PR must satisfy all of these before requesting review. Agen
 - **`///`, not `//`.** Only a `///` documentation comment rides into the generated client (as JSDoc) and can be mirrored to a Postgres `COMMENT ON COLUMN` so the description is readable straight from `psql \d+`. Prisma Migrate does not emit those `COMMENT ON COLUMN` statements itself — add them by hand in the migration when you want DB-level visibility. A plain `//` reaches neither.
 - **The gate is diff-scoped.** The `pr-gates` workflow fails only on columns a PR *adds or modifies* without a `///` comment; pre-existing uncommented columns are grandfathered. Enforce the new; don't boil the ocean.
 
+## Tenant scoping
+- **A `where` filter scopes only the rows it sits on — it does not reach into a join.** In a nested `include` / nested `select` / joined query, the outer tenant filter does **not** propagate to the nested relation. Any nested relation that can span tenants (a user's teams, a record's attachments, a comment's author) needs its **own** org/tenant filter, even when the top-level query is already scoped to the caller's org.
+- **These leaks are silent — right shape, wrong rows.** The response keeps its expected structure; only the contents are wrong (they carry another tenant's data). A fixture with a single org passes every assertion, so the bug ships green. When you add or touch a nested relation on a multi-tenant model, ask "can this relation cross the tenant boundary?" — scope it if so, and prove it with a test that seeds a *second* org and asserts none of its rows appear.
+
 ## Mistakes
 <!-- The codify-the-findings flywheel. When a review finding or debugging
      session reveals a repo-specific gotcha, append one bullet here:

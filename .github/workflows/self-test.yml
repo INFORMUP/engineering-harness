@@ -1,0 +1,17 @@
+name: self-test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: schema-comment-check self-test
+        run: node --test tests/schema-comment-check.test.mjs
+      - name: coverage-ratchet self-test
+        run: bash tests/coverage-ratchet.test.sh

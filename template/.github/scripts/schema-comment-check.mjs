@@ -20,6 +20,16 @@
  * next to (e.g. `organizationId String`) IS a column and is enforced. Block
  * attributes (`@@map`, `@@index`, ...) are skipped.
  *
+ * A second, stricter rule applies to nullable columns (type ends in `?`,
+ * including `Unsupported("...")?`): a doc comment alone is not enough — the
+ * gathered doc text (the whole contiguous `///` block above the field, plus
+ * any trailing `///` on the field line) must say what NULL *means* for that
+ * column. A nullable column is really two states glued to one type, and the
+ * schema itself cannot tell you which reading applies; the comment is the
+ * only place that distinction can live, so it must actually make it. The
+ * check is a crude `/\bnull/i` substring test on purpose — it forces the
+ * author to answer the question, it does not grade the answer.
+ *
  * Fails CLOSED. A gate's failure mode is a green build: broken and working look
  * identical from the outside, so an unchecked column reads as a clean one. Every
  * assumption this parser makes about schema structure is therefore asserted, and
@@ -92,20 +102,47 @@ function collectTypeNames(lines) {
   return { models, enums };
 }
 
-/** Does the field at index `idx` carry a `///` doc comment (leading or trailing)? */
-function hasDocComment(lines, idx) {
+/**
+ * The full `///` doc text associated with the field at index `idx`: every
+ * contiguous `///` line walking upward through the block, joined with the
+ * trailing `///` on the field line itself (if any). Returns "" when the field
+ * has no doc comment at all.
+ */
+function docText(lines, idx) {
+  const parts = [];
+
   // Trailing `///` on the field line itself — ignore `//` sequences inside
   // quoted strings (e.g. a URL default) by blanking quoted spans first.
   const bare = lines[idx].replace(/"(?:[^"\\]|\\.)*"/g, "");
-  if (bare.includes("///")) return true;
-  // Leading `///` on the immediately preceding line (Prisma associates a
-  // contiguous `///` block directly above the field).
-  const above = (lines[idx - 1] || "").trim();
-  return above.startsWith("///");
+  const trailingIdx = bare.indexOf("///");
+  if (trailingIdx !== -1) parts.push(lines[idx].slice(trailingIdx));
+
+  // Leading `///` block directly above the field: walk upward while lines
+  // are contiguous `///` comments (Prisma associates the whole contiguous
+  // block with the field beneath it, not just the adjacent line).
+  const leading = [];
+  let i = idx - 1;
+  while (i >= 0 && lines[i].trim().startsWith("///")) {
+    leading.unshift(lines[i].trim());
+    i -= 1;
+  }
+  parts.unshift(...leading);
+
+  return parts.join("\n");
+}
+
+/** Does the field at index `idx` carry a `///` doc comment (leading or trailing)? */
+function hasDocComment(lines, idx) {
+  return docText(lines, idx) !== "";
 }
 
 function baseType(rawType) {
   return rawType.replace(/[\[\]?]/g, "");
+}
+
+/** Is the field's raw captured type token nullable (trailing `?`, incl. `Unsupported("...")?`)? */
+function isNullableType(rawType) {
+  return rawType.endsWith("?");
 }
 
 /**
@@ -122,8 +159,12 @@ class UnparseableSchemaError extends Error {
 }
 
 /**
- * Walk the file, return violations: column fields on added lines lacking a
- * `///` doc comment. Each is { file, line, field }.
+ * Walk the file, return two kinds of violations found on added/modified
+ * lines:
+ *   - `missingDoc`: column fields with no `///` doc comment at all.
+ *   - `missingNullSemantics`: nullable column fields that DO have a doc
+ *     comment, but its text never says what NULL means.
+ * Each entry is { file, line, field }.
  *
  * Fails closed. The checks below assert invariants that valid Prisma cannot
  * violate — a model always closes, brace depth never goes negative, and a
@@ -132,7 +173,8 @@ class UnparseableSchemaError extends Error {
  * throws instead of guessing.
  */
 function findViolations(file, lines, addedLines, models) {
-  const violations = [];
+  const missingDoc = [];
+  const missingNullSemantics = [];
   /** The block we're inside, or null at top level: { kind, name, openLine }. */
   let block = null;
   let depth = 0;
@@ -201,7 +243,7 @@ function findViolations(file, lines, addedLines, models) {
     // Skip block attributes (`@@map`, `@@index`, ...) — not columns.
     if (trimmed.startsWith("@@")) continue;
 
-    const m = trimmed.match(/^(\w+)\s+([\w\[\]?.]+)/);
+    const m = trimmed.match(/^(\w+)\s+(Unsupported\("[^"]*"\)\??|[\w\[\]?.]+)/);
     if (!m) {
       // An unrecognised line the PR actually touched. It may or may not be a
       // column; the gate can't tell, and "can't tell" must not read as "fine".
@@ -221,16 +263,23 @@ function findViolations(file, lines, addedLines, models) {
     if (models.has(baseType(rawType))) continue;
 
     if (!addedLines.has(lineNo)) continue;
-    if (hasDocComment(lines, i)) continue;
 
-    violations.push({ file, line: lineNo, field: fieldName });
+    const doc = docText(lines, i);
+    if (doc === "") {
+      missingDoc.push({ file, line: lineNo, field: fieldName });
+      continue;
+    }
+
+    if (isNullableType(rawType) && !/\bnull/i.test(doc)) {
+      missingNullSemantics.push({ file, line: lineNo, field: fieldName });
+    }
   }
 
   if (block) {
     throw new UnparseableSchemaError(file, block.openLine, `${block.kind} ${block.name} is never closed`);
   }
 
-  return violations;
+  return { missingDoc, missingNullSemantics };
 }
 
 function main() {
@@ -242,13 +291,16 @@ function main() {
     return;
   }
 
-  const all = [];
+  const missingDoc = [];
+  const missingNullSemantics = [];
   try {
     for (const file of files) {
       const lines = headLines(file);
       const { models } = collectTypeNames(lines);
       const added = addedLineNumbers(base, file);
-      all.push(...findViolations(file, lines, added, models));
+      const violations = findViolations(file, lines, added, models);
+      missingDoc.push(...violations.missingDoc);
+      missingNullSemantics.push(...violations.missingNullSemantics);
     }
   } catch (err) {
     if (!(err instanceof UnparseableSchemaError)) throw err;
@@ -266,19 +318,38 @@ function main() {
     process.exit(1);
   }
 
-  if (all.length === 0) {
+  if (missingDoc.length === 0 && missingNullSemantics.length === 0) {
     console.log(`schema-comment-check: PASS — every new/changed column in ${files.join(", ")} has a /// doc comment.`);
     return;
   }
 
-  console.error("schema-comment-check: FAIL — new/modified columns without a /// doc comment:\n");
-  for (const v of all) {
-    console.error(`  ${v.file}:${v.line}  ${v.field}`);
+  if (missingDoc.length > 0) {
+    console.error("schema-comment-check: FAIL — new/modified columns without a /// doc comment:\n");
+    for (const v of missingDoc) {
+      console.error(`  ${v.file}:${v.line}  ${v.field}`);
+    }
+    console.error(
+      "\nAdd a /// doc comment above each column (spell out acronyms and units). " +
+        "Example:\n  /// Average revenue per paying member, in integer cents (MRR / payingMembers).\n  arpuCents Int @default(0)",
+    );
   }
-  console.error(
-    "\nAdd a /// doc comment above each column (spell out acronyms and units). " +
-      "Example:\n  /// Average revenue per paying member, in integer cents (MRR / payingMembers).\n  arpuCents Int @default(0)",
-  );
+
+  if (missingNullSemantics.length > 0) {
+    if (missingDoc.length > 0) console.error("");
+    console.error(
+      "schema-comment-check: FAIL — nullable columns whose doc comment never says what NULL means:\n",
+    );
+    for (const v of missingNullSemantics) {
+      console.error(`  ${v.file}:${v.line}  ${v.field}`);
+    }
+    console.error(
+      "\nA nullable column encodes a second state on top of its type, and the schema cannot\n" +
+        "tell you which one. \"Not yet closed\", \"closed but the time is unknown\", \"closing is\n" +
+        "not applicable to this row\" are three different columns with identical DDL. Say which\n" +
+        "one this is in the /// comment — the word \"null\" must appear.",
+    );
+  }
+
   process.exit(1);
 }
 

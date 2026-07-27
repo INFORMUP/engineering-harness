@@ -149,4 +149,77 @@ describe("schema-comment-check", () => {
       `gate emitted CANNOT VERIFY instead of correctly catching the undocumented column — this is a real finding, not a test bug. Output:\n${output}`,
     );
   });
+
+  test("added nullable column whose doc mentions null passes", () => {
+    const base = "model User {\n  id String @id\n}\n";
+    const head =
+      "model User {\n  id String @id\n  /// Timestamp the account was closed. Null while the account is still open.\n  closedAt DateTime?\n}\n";
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("added nullable column whose doc does NOT mention null fails, distinct from CANNOT VERIFY", () => {
+    const base = "model User {\n  id String @id\n}\n";
+    const head =
+      "model User {\n  id String @id\n  /// Timestamp the account was closed.\n  closedAt DateTime?\n}\n";
+    const { code, output } = runGate(base, head);
+    assert.notEqual(code, 0);
+    assert.match(output, /closedAt/);
+    assert.doesNotMatch(
+      output,
+      /CANNOT VERIFY/,
+      `gate emitted CANNOT VERIFY instead of the null-semantics finding. Output:\n${output}`,
+    );
+  });
+
+  test("added NON-nullable column whose doc does not mention null passes (rule does not leak)", () => {
+    const base = "model User {\n  id String @id\n}\n";
+    const head =
+      "model User {\n  id String @id\n  /// Timestamp the account was closed.\n  closedAt DateTime\n}\n";
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("multi-line leading /// block, only a later line mentions null, passes", () => {
+    const base = "model User {\n  id String @id\n}\n";
+    const head =
+      "model User {\n  id String @id\n" +
+      "  /// Timestamp the account was closed.\n" +
+      "  /// Null while the account is still open.\n" +
+      "  closedAt DateTime?\n" +
+      "}\n";
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("trailing /// on the field line mentioning null passes", () => {
+    const base = "model User {\n  id String @id\n}\n";
+    const head =
+      "model User {\n  id String @id\n  closedAt DateTime? /// null means the account is still open\n}\n";
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("pre-existing untouched nullable column with a null-silent doc is grandfathered", () => {
+    const base =
+      "model User {\n  id String @id\n  /// Timestamp the account was closed.\n  closedAt DateTime?\n}\n";
+    const head =
+      "model User {\n  id String @id\n  /// Timestamp the account was closed.\n  closedAt DateTime?\n  /// user email\n  email String\n}\n";
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("touched Unsupported(\"tsvector\")? column without null-mentioning doc fails", () => {
+    const base = "model User {\n  id String @id\n}\n";
+    const head =
+      'model User {\n  id String @id\n  /// Full-text search vector.\n  searchVector Unsupported("tsvector")?\n}\n';
+    const { code, output } = runGate(base, head);
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /searchVector/);
+  });
 });

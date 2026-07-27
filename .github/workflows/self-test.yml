@@ -11,7 +11,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: schema-comment-check self-test
-        run: node --test tests/schema-comment-check.test.mjs
-      - name: coverage-ratchet self-test
-        run: bash tests/coverage-ratchet.test.sh
+      # Fail if any template/.github/scripts/ gate lacks a matching self-test,
+      # so a new script can't ship untested. Runs first: a coverage hole is a
+      # more useful failure than a downstream "no tests found".
+      - name: coverage manifest (every gate script has a self-test)
+        run: bash tests/check-coverage.sh
+      # Discover tests by convention rather than naming each file, so a new
+      # <name>.test.mjs / <name>.test.sh is picked up automatically.
+      - name: node self-tests
+        run: |
+          shopt -s nullglob
+          files=(tests/*.test.mjs)
+          if [[ ${#files[@]} -eq 0 ]]; then echo "no node self-tests"; exit 0; fi
+          node --test "${files[@]}"
+      - name: bash self-tests
+        run: |
+          shopt -s nullglob
+          status=0
+          for f in tests/*.test.sh; do
+            echo "== $f =="
+            bash "$f" || status=1
+          done
+          exit $status

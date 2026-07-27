@@ -1,10 +1,33 @@
 # Self-tests for the template gate scripts
 
-This directory holds self-tests for two of the gate scripts shipped under
+This directory holds self-tests for the gate scripts shipped under
 `template/.github/scripts/`:
 
 - `schema-comment-check.mjs` — the diff-scoped Prisma column-comment gate.
 - `coverage-ratchet.sh` — the per-package coverage floor/ratchet check.
+
+## The one rule: every gate script has a matching self-test
+
+Each script under `template/.github/scripts/` **must** have a self-test named
+`tests/<script-basename>.test.<ext>`:
+
+| Script                                       | Self-test                              |
+| -------------------------------------------- | -------------------------------------- |
+| `template/.github/scripts/coverage-ratchet.sh`     | `tests/coverage-ratchet.test.sh`       |
+| `template/.github/scripts/schema-comment-check.mjs`| `tests/schema-comment-check.test.mjs`  |
+
+The test keeps its own extension (`.mjs` for a node test, `.sh` for a bash
+test), independent of the script's. `tests/check-coverage.sh` enforces this
+mapping in CI: a script with no matching test **fails the build**.
+
+This is deliberate. The workflow discovers and runs whatever tests exist by
+glob, so without the manifest gate a new gate script added with no test would
+leave CI green — and then fan out to every consumer on the next `install.sh`
+sync, untested. The gate makes the guarantee "every shipped script is tested,"
+not "every test we remembered to write runs." So: **add a script, add its
+test** — there is no opt-out. (If a genuinely non-runnable helper file ever
+needs to live in `scripts/`, that is the moment to add an escape hatch to
+`check-coverage.sh`, not before.)
 
 ## Why these live at the repo root, not under `template/`
 
@@ -17,16 +40,19 @@ consumer repo.
 ## Running locally
 
 ```bash
-node --test tests/schema-comment-check.test.mjs
-bash tests/coverage-ratchet.test.sh
+bash tests/check-coverage.sh          # every script has a test?
+node --test tests/*.test.mjs          # all node self-tests
+bash tests/coverage-ratchet.test.sh   # (or any single bash self-test)
 ```
 
-Both are hermetic: each test case builds its own temporary git repo (for the
-schema-comment gate) or temporary directory with a fake coverage summary and
-baseline (for the coverage ratchet), so nothing depends on this repo's own
+The self-tests are hermetic: each case builds its own temporary git repo (for
+the schema-comment gate) or temporary directory with a fake coverage summary
+and baseline (for the coverage ratchet), so nothing depends on this repo's own
 history or state.
 
 ## CI
 
-`.github/workflows/self-test.yml` runs both commands above on every push to
-`main` and on every pull request.
+`.github/workflows/self-test.yml` runs, on every push to `main` and every pull
+request: the coverage-manifest gate (`check-coverage.sh`), then all node
+self-tests (`tests/*.test.mjs`, discovered by glob), then every bash
+self-test (`tests/*.test.sh`).

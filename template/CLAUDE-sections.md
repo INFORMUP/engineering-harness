@@ -28,6 +28,15 @@ Every implementation PR must satisfy all of these before requesting review. Agen
 - Run the affected package's tests before committing. Hooks are the fast path; CI is the guarantee.
 - No `--no-verify` and no force-push.
 
+## Worklog
+- **`docs/worklog/` holds issues found in passing and the reasoning behind them** — one file per item, written **when the item is discovered**, not when work on it starts. Discovery-time is when the evidence is free; reconstructing it later costs an investigation and yields a worse entry. Resolved entries move to `docs/worklog/archive/` with a `YYYY-MM-DD-HHMM-` filename prefix (UTC); they are never deleted.
+- **The entry records what a diff cannot**: the evidence (commands + output, `path:line`), why it matters, and **the approaches considered and rejected, with reasons**. That last part is the one that makes an old entry worth reading — it is how a wrong approach gets diagnosed afterward and how trends across entries surface.
+- **Worklog vs. a TaskFlow task** — the test is not size, it's **whether someone outside the session must act on it**. TaskFlow if it needs scheduling, a review gate, acceptance criteria, or is tracked as a deliverable. Worklog for everything else, *including things that will never be done* — "looked at this, here's why it's fine" has no resting place in TaskFlow.
+- **Promote by link, not by copy.** A graduating entry gets a TaskFlow task whose body cites the worklog path; the entry records the task id. TaskFlow owns status and scheduling, the repo owns evidence. Copying the reasoning into both means the current half lives in whichever was written last.
+- **An entry belongs to the repo whose code it describes**, so it travels with that code and is greppable by an agent working there — not centralized in the umbrella repo.
+- **Agents file and update entries; only humans resolve them.** Filing is not permission to act on the item, and it does not license a detour from the requested task.
+- The worklog is *not* the "docs updated in the same PR" obligation in the Definition of Done — that's the domain docs in [docs/README.md](docs/README.md). A worklog entry is a record, not documentation of behavior.
+
 ## Schema conventions
 - **Every Prisma column carries a `///` doc comment.** Every model field that maps to a real DB column — including FK scalar columns (`organizationId String`) — gets a `///` doc comment that spells out any acronyms and states units (e.g. cents, milliseconds, percent). Relation navigation fields aren't columns and need no comment.
 - **`///`, not `//`.** Only a `///` documentation comment rides into the generated client (as JSDoc) and can be mirrored to a Postgres `COMMENT ON COLUMN` so the description is readable straight from `psql \d+`. Prisma Migrate does not emit those `COMMENT ON COLUMN` statements itself — add them by hand in the migration when you want DB-level visibility. A plain `//` reaches neither.

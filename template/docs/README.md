@@ -20,6 +20,7 @@ new row in the same PR.
 | `docs/inventory.md` | **Generated** reuse-surface index (exported services/utils/composables + one-line summaries) — consult before writing any new helper | `scripts/generate-inventory.mjs` — **never hand-edit** | Drift-checked in CI | Reuse-surface exports change | Generated |
 | `docs/adr/` | One Architecture Decision Record per major decision: context, options, rationale, consequences | Contributor's agent | Senior (CODEOWNERS) | New dependency, schema change, cross-module design, auth change | Immutable once accepted; superseded, never edited |
 | `docs/plans/` | Pre-implementation contracts for plan-required work | Planning workflow | Senior (plan-PR merge = approval) | Plan-required paths touched | Draft → approved → implemented → `archive/` |
+| `docs/worklog/` | One entry per issue found in passing: evidence, why it matters, approaches rejected. Written **at discovery**, before it's worked on | Contributor's agent | No approval to file; **only humans resolve** | An issue surfaces outside the current task | Open → `archive/` on resolution |
 | `docs/audits/` | Dated codebase-audit reports | Audit agent | Senior triage | Scheduled cadence | Append-only |
 | `docs/README.md` | This taxonomy | — | Senior | Taxonomy changes | Living |
 

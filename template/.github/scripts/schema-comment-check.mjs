@@ -138,24 +138,36 @@ function usesPostgres(lines) {
 }
 
 /**
- * The Postgres type names given a `COMMENT ON TYPE` on a line the PR ADDED, in
- * any `.sql` file under the schema's `migrations/` directory.
+ * Postgres type name -> the comment TEXT it is given by a `COMMENT ON TYPE` on
+ * a line the PR ADDED, in any `.sql` file under the schema's `migrations/`
+ * directory.
  *
  * Added lines only, not the whole migration tree: a `COMMENT ON TYPE` written
  * months ago describes the enum as it was then, and would silently satisfy the
  * gate for a member added today. Requiring the statement in THIS diff is what
  * makes the comment track the member list.
+ *
+ * The text is returned, not just the name, because existence alone is a weak
+ * rule — it passes a statement that never mentions the member being added. The
+ * caller checks the added member names actually appear in it.
+ *
+ * The literal is matched as a single-quoted string with `''` escapes rather
+ * than "up to the next semicolon": these comments are prose, and prose contains
+ * semicolons.
  */
 function addedEnumComments(base, schemaFile) {
   const migrationsDir = `${schemaFile.split("/").slice(0, -1).concat("migrations").join("/")}`;
   const diff = git(["diff", "--unified=0", `${base}...HEAD`, "--", `${migrationsDir}/*.sql`]);
-  const commented = new Set();
-  for (const line of diff.split("\n")) {
-    if (!line.startsWith("+") || line.startsWith("+++")) continue;
-    const re = /COMMENT\s+ON\s+TYPE\s+(?:"?public"?\s*\.\s*)?"?(\w+)"?/gi;
-    let m;
-    while ((m = re.exec(line)) !== null) commented.add(m[1]);
-  }
+  const addedSql = diff
+    .split("\n")
+    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .map((line) => line.slice(1))
+    .join("\n");
+
+  const commented = new Map();
+  const re = /COMMENT\s+ON\s+TYPE\s+(?:"?public"?\s*\.\s*)?"?(\w+)"?\s+IS\s+('(?:[^']|'')*')/gi;
+  let m;
+  while ((m = re.exec(addedSql)) !== null) commented.set(m[1], m[2]);
   return commented;
 }
 
@@ -262,7 +274,7 @@ function findViolations(file, lines, addedLines, models) {
       if (!trimmed || trimmed.startsWith("//")) continue;
       const open = trimmed.match(/^(model|enum|view|type|datasource|generator)\s+(\w+)\s*\{/);
       if (open) {
-        block = { kind: open[1], name: open[2], openLine: lineNo, dbName: open[2], touched: false };
+        block = { kind: open[1], name: open[2], openLine: lineNo, dbName: open[2], touched: false, addedMembers: [] };
         depth = 1;
         if (block.kind === "enum" && addedLines.has(lineNo)) {
           // A touched enum needs its own `COMMENT ON TYPE`, whether the change
@@ -315,7 +327,7 @@ function findViolations(file, lines, addedLines, models) {
         );
       }
       if (block.kind === "enum" && block.touched) {
-        touchedEnums.set(block.dbName, { name: block.name, line: block.openLine });
+        touchedEnums.set(block.dbName, { name: block.name, line: block.openLine, addedMembers: block.addedMembers });
       }
       block = null;
       continue;
@@ -348,6 +360,7 @@ function findViolations(file, lines, addedLines, models) {
       }
       if (!addedLines.has(lineNo)) continue;
       block.touched = true;
+      block.addedMembers.push(member[1]);
       if (docText(lines, i) === "") {
         missingEnumDoc.push({ file, line: lineNo, enumName: block.name, member: member[1] });
       }
@@ -426,8 +439,17 @@ function main() {
       if (usesPostgres(lines) && violations.touchedEnums.size > 0) {
         const commented = addedEnumComments(base, file);
         for (const [dbName, where] of violations.touchedEnums) {
-          if (!commented.has(dbName)) {
-            missingEnumComment.push({ file, line: where.line, enumName: where.name, dbName });
+          const commentText = commented.get(dbName);
+          if (commentText === undefined) {
+            missingEnumComment.push({ file, line: where.line, enumName: where.name, dbName, uncovered: [] });
+            continue;
+          }
+          // A statement that never names the member being added is not parity —
+          // it is the previous comment re-applied. Restating the full member
+          // list is the documented contract; this is what enforces it.
+          const uncovered = where.addedMembers.filter((m) => !commentText.includes(m));
+          if (uncovered.length > 0) {
+            missingEnumComment.push({ file, line: where.line, enumName: where.name, dbName, uncovered });
           }
         }
       }
@@ -501,7 +523,10 @@ function main() {
   if (missingEnumComment.length > 0) {
     console.error("\nschema-comment-check: FAIL — enums changed without a matching COMMENT ON TYPE in a migration:\n");
     for (const v of missingEnumComment) {
-      console.error(`  ${v.file}:${v.line}  ${v.enumName}  (expected: COMMENT ON TYPE "${v.dbName}")`);
+      const why = v.uncovered.length === 0
+        ? `no COMMENT ON TYPE "${v.dbName}" in this PR's migrations`
+        : `COMMENT ON TYPE "${v.dbName}" never mentions: ${v.uncovered.join(", ")}`;
+      console.error(`  ${v.file}:${v.line}  ${v.enumName}  — ${why}`);
     }
     console.error(
       "\nPrisma Migrate does not emit COMMENT ON from /// doc comments, so without this the\n" +

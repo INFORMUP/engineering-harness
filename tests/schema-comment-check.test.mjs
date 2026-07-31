@@ -340,3 +340,30 @@ describe("schema-comment-check: enums", () => {
     assert.match(output, /CANNOT VERIFY/);
   });
 });
+
+describe("schema-comment-check: enum comment coverage", () => {
+  test("a COMMENT ON TYPE that never mentions the added member fails", () => {
+    // Existence alone is too weak: re-applying the previous comment satisfies
+    // "a statement is present" while saying nothing about what changed.
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n}\n`;
+    const { code, output } = runGate(base, head, {
+      [MIGRATION]: 'COMMENT ON TYPE "Vote" IS \'How a legislator voted. YEA: in favour.\';\n',
+    });
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /never mentions/);
+    assert.match(output, /NAY/);
+  });
+
+  test("a comment body containing semicolons is not truncated at the first one", () => {
+    // These comments are prose, and prose has semicolons — parsing "up to the
+    // next ;" would clip the body and lose the member named after it.
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n}\n`;
+    const { code, output } = runGate(base, head, {
+      [MIGRATION]:
+        'COMMENT ON TYPE "Vote" IS \'How a legislator voted; the values are not interchangeable. YEA: in favour. NAY: against.\';\n',
+    });
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+  });
+});

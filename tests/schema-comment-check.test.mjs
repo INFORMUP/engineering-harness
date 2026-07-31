@@ -26,7 +26,13 @@ function git(cwd, args) {
  * base commit and returns { code, output } where output is combined
  * stdout+stderr.
  */
-function runGate(baseSchema, headSchema, extraHeadFiles = {}) {
+function runGate(baseSchema, headSchema, extraHeadFiles = {}, extraBaseFiles = {}) {
+  const write = (tmp, name, contents) => {
+    const full = path.join(tmp, name);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, contents);
+  };
+
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schema-gate-"));
   try {
     git(tmp, ["init", "-q"]);
@@ -35,15 +41,14 @@ function runGate(baseSchema, headSchema, extraHeadFiles = {}) {
     git(tmp, ["config", "commit.gpgsign", "false"]);
 
     fs.writeFileSync(path.join(tmp, "schema.prisma"), baseSchema);
+    for (const [name, contents] of Object.entries(extraBaseFiles)) write(tmp, name, contents);
     git(tmp, ["add", "-A"]);
     git(tmp, ["commit", "-q", "-m", "base"]);
     const baseSha = git(tmp, ["rev-parse", "HEAD"]).trim();
 
     git(tmp, ["checkout", "-q", "-b", "feature"]);
     fs.writeFileSync(path.join(tmp, "schema.prisma"), headSchema);
-    for (const [name, contents] of Object.entries(extraHeadFiles)) {
-      fs.writeFileSync(path.join(tmp, name), contents);
-    }
+    for (const [name, contents] of Object.entries(extraHeadFiles)) write(tmp, name, contents);
     git(tmp, ["add", "-A"]);
     git(tmp, ["commit", "-q", "-m", "head"]);
 
@@ -221,5 +226,117 @@ describe("schema-comment-check", () => {
     const { code, output } = runGate(base, head);
     assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
     assert.match(output, /searchVector/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Enums: `///` on declarations and members, plus COMMENT ON TYPE parity.
+//
+// Postgres has no per-label comment — COMMENT ON ENUM LABEL and COMMENT ON
+// VALUE are both syntax errors — so the parity rule asks for one type-level
+// statement carrying the folded member descriptions. These tests pin that
+// shape, and pin the two ways it must NOT be satisfiable: by a comment written
+// in an earlier migration, and on a non-Postgres datasource.
+// ---------------------------------------------------------------------------
+
+const PG = 'datasource db {\n  provider = "postgresql"\n  url = env("DATABASE_URL")\n}\n\n';
+const MYSQL = 'datasource db {\n  provider = "mysql"\n  url = env("DATABASE_URL")\n}\n\n';
+const MIGRATION = "migrations/20260801000000_enum/migration.sql";
+
+describe("schema-comment-check: enums", () => {
+  test("added enum member without /// doc comment fails", () => {
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  NAY\n}\n`;
+    const { code, output } = runGate(base, head);
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /Vote\.NAY/);
+  });
+
+  test("added enum member with /// but no COMMENT ON TYPE in the migration fails", () => {
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n}\n`;
+    const { code, output } = runGate(base, head, {
+      [MIGRATION]: 'ALTER TYPE "Vote" ADD VALUE \'NAY\';\n',
+    });
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /COMMENT ON TYPE/);
+    assert.match(output, /Vote/);
+  });
+
+  test("added enum member with /// and a COMMENT ON TYPE in the migration passes", () => {
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n}\n`;
+    const { code, output } = runGate(base, head, {
+      [MIGRATION]:
+        'ALTER TYPE "Vote" ADD VALUE \'NAY\';\nCOMMENT ON TYPE "Vote" IS \'How a legislator voted. YEA: in favour. NAY: against.\';\n',
+    });
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("new enum declaration without a /// doc comment fails", () => {
+    const base = `${PG}model User {\n  id String @id\n}\n`;
+    const head = `${PG}model User {\n  id String @id\n}\n\nenum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const { code, output } = runGate(base, head, {
+      [MIGRATION]: 'COMMENT ON TYPE "Vote" IS \'How a legislator voted. YEA: in favour.\';\n',
+    });
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /Vote/);
+  });
+
+  test("pre-existing untouched enum is grandfathered", () => {
+    const base = `${PG}enum Vote {\n  YEA\n  NAY\n}\n\nmodel User {\n  id String @id\n}\n`;
+    const head = `${PG}enum Vote {\n  YEA\n  NAY\n}\n\nmodel User {\n  id String @id\n  /// User email address.\n  email String\n}\n`;
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("a COMMENT ON TYPE in an EARLIER migration does not satisfy parity for a new member", () => {
+    // The whole point of scoping parity to added lines: a comment written when
+    // the enum had two members says nothing about the third, but it is sitting
+    // right there in the migrations tree looking like compliance.
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n}\n`;
+    const { code, output } = runGate(
+      base,
+      head,
+      { [MIGRATION]: 'ALTER TYPE "Vote" ADD VALUE \'NAY\';\n' },
+      { "migrations/20260101000000_init/migration.sql": 'COMMENT ON TYPE "Vote" IS \'YEA: in favour.\';\n' },
+    );
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /COMMENT ON TYPE/);
+  });
+
+  test("non-Postgres datasource skips the COMMENT ON parity rule but still needs ///", () => {
+    const base = `${MYSQL}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${MYSQL}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n}\n`;
+    const { code, output } = runGate(base, head);
+    assert.equal(code, 0, `expected PASS, got code ${code} with output:\n${output}`);
+    assert.match(output, /PASS/);
+  });
+
+  test("@@map'd enum expects the COMMENT ON TYPE to use the mapped Postgres type name", () => {
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n\n  @@map("vote_value")\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  /// Voted against.\n  NAY\n\n  @@map("vote_value")\n}\n`;
+
+    const wrongName = runGate(base, head, {
+      [MIGRATION]: 'COMMENT ON TYPE "Vote" IS \'…\';\n',
+    });
+    assert.notEqual(wrongName.code, 0, `expected non-zero exit, got:\n${wrongName.output}`);
+    assert.match(wrongName.output, /vote_value/);
+
+    const rightName = runGate(base, head, {
+      [MIGRATION]: 'COMMENT ON TYPE "vote_value" IS \'YEA: in favour. NAY: against.\';\n',
+    });
+    assert.equal(rightName.code, 0, `expected PASS, got code ${rightName.code} with output:\n${rightName.output}`);
+  });
+
+  test("unclassifiable touched line inside an enum fails CANNOT VERIFY, not silently", () => {
+    const base = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n}\n`;
+    const head = `${PG}enum Vote {\n  /// Voted in favour.\n  YEA\n  NAY = "nay"\n}\n`;
+    const { code, output } = runGate(base, head);
+    assert.notEqual(code, 0, `expected non-zero exit, got code ${code} with output:\n${output}`);
+    assert.match(output, /CANNOT VERIFY/);
   });
 });

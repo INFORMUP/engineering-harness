@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Diff-scoped Prisma column-comment gate.
+ * Diff-scoped Prisma schema-comment gate: columns and enums.
  *
- * Fails only when a PR ADDS or MODIFIES a model field (a real DB column) in a
- * `*.prisma` schema without a `///` doc comment. Pre-existing uncommented
- * columns are grandfathered — the author only "owns" the lines the diff
- * actually touches. Same diff-scoped philosophy as the suppression and reuse
- * gates in pr-gates.yml: enforce the new, don't boil the ocean.
+ * Fails only when a PR ADDS or MODIFIES a model field (a real DB column) or an
+ * enum declaration/member in a `*.prisma` schema without a `///` doc comment.
+ * Pre-existing uncommented columns and enums are grandfathered — the author
+ * only "owns" the lines the diff actually touches. Same diff-scoped philosophy
+ * as the suppression and reuse gates in pr-gates.yml: enforce the new, don't
+ * boil the ocean.
  *
  * Why `///` (triple slash) and not `//`: only `///` is a Prisma *documentation*
  * comment. It rides into the generated client as JSDoc and can be synced to a
@@ -29,6 +30,31 @@
  * only place that distinction can live, so it must actually make it. The
  * check is a crude `/\bnull/i` substring test on purpose — it forces the
  * author to answer the question, it does not grade the answer.
+ *
+ * ENUMS carry a third rule, and it has a different shape because Postgres has
+ * a hard limitation here. An enum member is where domain semantics live —
+ * `VoteDerivation.UNANIMOUS_RECOVERY` says something about how much to trust a
+ * row that its identifier alone does not — so touched enum declarations and
+ * members must each carry a `///`, exactly like columns. But the schema file
+ * is not the only audience: anyone reading the database through psql, a BI
+ * tool, or a schema browser sees none of it, because Prisma Migrate does not
+ * emit `COMMENT ON` from `///`.
+ *
+ * For columns that is fixable per column. For enums it is not: **Postgres has
+ * no per-label comment**. `COMMENT ON TYPE` exists; `COMMENT ON ENUM LABEL`
+ * and `COMMENT ON VALUE` are both syntax errors (verified on PG 15). So the
+ * only way member descriptions reach the database is folded into the one
+ * type-level comment. That is why the parity rule below asks for a
+ * `COMMENT ON TYPE "<Enum>"` in a migration rather than one comment per
+ * member — it is not a loose approximation of the ideal rule, it IS the
+ * strictest rule Postgres can express.
+ *
+ * The parity rule is diff-scoped like the rest: touch an enum block, and the
+ * same PR must add a `COMMENT ON TYPE` for that enum in a migration under the
+ * schema's `migrations/` directory. It is skipped entirely unless the
+ * datasource provider is `postgresql` — `COMMENT ON TYPE` is not portable, and
+ * a MySQL/SQLite repo syncing this gate must not be asked for DDL its engine
+ * cannot parse.
  *
  * Fails CLOSED. A gate's failure mode is a green build: broken and working look
  * identical from the outside, so an unchecked column reads as a clean one. Every
@@ -87,6 +113,50 @@ function addedLineNumbers(base, file) {
 /** HEAD content of a file as an array of lines. */
 function headLines(file) {
   return git(["show", `HEAD:${file}`]).split("\n");
+}
+
+/**
+ * Is this schema backed by Postgres? Only Postgres has `COMMENT ON TYPE`, so
+ * the enum parity rule is skipped everywhere else rather than demanding DDL
+ * the target engine cannot parse. Read from the `datasource` block's
+ * `provider`, which may be a literal or an `env("...")` indirection — the
+ * latter is unknowable at gate time, so it is treated as NOT Postgres. That
+ * direction is deliberate: a false skip costs a missing DB comment, a false
+ * demand costs a build that cannot be made green.
+ */
+function usesPostgres(lines) {
+  let inDatasource = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^datasource\s+\w+\s*\{/.test(trimmed)) { inDatasource = true; continue; }
+    if (inDatasource && trimmed.startsWith("}")) { inDatasource = false; continue; }
+    if (!inDatasource) continue;
+    const m = trimmed.match(/^provider\s*=\s*"([^"]+)"/);
+    if (m) return m[1] === "postgresql" || m[1] === "postgres";
+  }
+  return false;
+}
+
+/**
+ * The Postgres type names given a `COMMENT ON TYPE` on a line the PR ADDED, in
+ * any `.sql` file under the schema's `migrations/` directory.
+ *
+ * Added lines only, not the whole migration tree: a `COMMENT ON TYPE` written
+ * months ago describes the enum as it was then, and would silently satisfy the
+ * gate for a member added today. Requiring the statement in THIS diff is what
+ * makes the comment track the member list.
+ */
+function addedEnumComments(base, schemaFile) {
+  const migrationsDir = `${schemaFile.split("/").slice(0, -1).concat("migrations").join("/")}`;
+  const diff = git(["diff", "--unified=0", `${base}...HEAD`, "--", `${migrationsDir}/*.sql`]);
+  const commented = new Set();
+  for (const line of diff.split("\n")) {
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+    const re = /COMMENT\s+ON\s+TYPE\s+(?:"?public"?\s*\.\s*)?"?(\w+)"?/gi;
+    let m;
+    while ((m = re.exec(line)) !== null) commented.add(m[1]);
+  }
+  return commented;
 }
 
 /** Names of every `model` and `enum` declared in the file (for relation detection). */
@@ -159,12 +229,13 @@ class UnparseableSchemaError extends Error {
 }
 
 /**
- * Walk the file, return two kinds of violations found on added/modified
- * lines:
+ * Walk the file, return the violations found on added/modified lines:
  *   - `missingDoc`: column fields with no `///` doc comment at all.
  *   - `missingNullSemantics`: nullable column fields that DO have a doc
  *     comment, but its text never says what NULL means.
- * Each entry is { file, line, field }.
+ *   - `missingEnumDoc`: enum declarations and members with no `///`.
+ * Plus `touchedEnums`, the Postgres type names whose block this PR changed —
+ * `main()` pairs that against the migrations to enforce COMMENT ON parity.
  *
  * Fails closed. The checks below assert invariants that valid Prisma cannot
  * violate — a model always closes, brace depth never goes negative, and a
@@ -175,6 +246,9 @@ class UnparseableSchemaError extends Error {
 function findViolations(file, lines, addedLines, models) {
   const missingDoc = [];
   const missingNullSemantics = [];
+  const missingEnumDoc = [];
+  /** Postgres type name -> { name, line } for every enum this PR touched. */
+  const touchedEnums = new Map();
   /** The block we're inside, or null at top level: { kind, name, openLine }. */
   let block = null;
   let depth = 0;
@@ -188,8 +262,16 @@ function findViolations(file, lines, addedLines, models) {
       if (!trimmed || trimmed.startsWith("//")) continue;
       const open = trimmed.match(/^(model|enum|view|type|datasource|generator)\s+(\w+)\s*\{/);
       if (open) {
-        block = { kind: open[1], name: open[2], openLine: lineNo };
+        block = { kind: open[1], name: open[2], openLine: lineNo, dbName: open[2], touched: false };
         depth = 1;
+        if (block.kind === "enum" && addedLines.has(lineNo)) {
+          // A touched enum needs its own `COMMENT ON TYPE`, whether the change
+          // was to the declaration or to a member below it.
+          block.touched = true;
+          if (docText(lines, i) === "") {
+            missingEnumDoc.push({ file, line: lineNo, enumName: block.name, member: null });
+          }
+        }
         continue;
       }
       // Top level is only blanks, comments, and block openers. Anything else
@@ -232,12 +314,48 @@ function findViolations(file, lines, addedLines, models) {
           `${block.kind} ${block.name} (opened line ${block.openLine}) appears to end on a line that is not a closing brace`,
         );
       }
+      if (block.kind === "enum" && block.touched) {
+        touchedEnums.set(block.dbName, { name: block.name, line: block.openLine });
+      }
       block = null;
       continue;
     }
 
-    // Only model bodies hold columns. Enum members, datasource settings, and
-    // generator options are declarations of another kind entirely.
+    if (block.kind === "enum") {
+      // `@@map("x")` renames the Postgres type, so it is the name the
+      // `COMMENT ON TYPE` must use — not the Prisma identifier.
+      const mapped = trimmed.match(/^@@map\("([^"]+)"\)/);
+      if (mapped) {
+        block.dbName = mapped[1];
+        if (addedLines.has(lineNo)) block.touched = true;
+        continue;
+      }
+      if (trimmed.startsWith("@@")) continue;
+
+      const member = trimmed.match(/^(\w+)\s*(?:@map\("[^"]*"\))?\s*$/);
+      if (!member) {
+        // Same fail-closed contract as model bodies: a touched line the parser
+        // cannot classify might be an undocumented member, and "can't tell"
+        // must not read as "fine".
+        if (addedLines.has(lineNo)) {
+          throw new UnparseableSchemaError(
+            file,
+            lineNo,
+            `cannot classify this line inside enum ${block.name} — the gate cannot confirm it is not an undocumented member`,
+          );
+        }
+        continue;
+      }
+      if (!addedLines.has(lineNo)) continue;
+      block.touched = true;
+      if (docText(lines, i) === "") {
+        missingEnumDoc.push({ file, line: lineNo, enumName: block.name, member: member[1] });
+      }
+      continue;
+    }
+
+    // Only model bodies hold columns. Datasource settings and generator
+    // options are declarations of another kind entirely.
     if (block.kind !== "model") continue;
 
     // Skip block attributes (`@@map`, `@@index`, ...) — not columns.
@@ -279,7 +397,7 @@ function findViolations(file, lines, addedLines, models) {
     throw new UnparseableSchemaError(file, block.openLine, `${block.kind} ${block.name} is never closed`);
   }
 
-  return { missingDoc, missingNullSemantics };
+  return { missingDoc, missingNullSemantics, missingEnumDoc, touchedEnums };
 }
 
 function main() {
@@ -293,6 +411,8 @@ function main() {
 
   const missingDoc = [];
   const missingNullSemantics = [];
+  const missingEnumDoc = [];
+  const missingEnumComment = [];
   try {
     for (const file of files) {
       const lines = headLines(file);
@@ -301,6 +421,16 @@ function main() {
       const violations = findViolations(file, lines, added, models);
       missingDoc.push(...violations.missingDoc);
       missingNullSemantics.push(...violations.missingNullSemantics);
+      missingEnumDoc.push(...violations.missingEnumDoc);
+
+      if (usesPostgres(lines) && violations.touchedEnums.size > 0) {
+        const commented = addedEnumComments(base, file);
+        for (const [dbName, where] of violations.touchedEnums) {
+          if (!commented.has(dbName)) {
+            missingEnumComment.push({ file, line: where.line, enumName: where.name, dbName });
+          }
+        }
+      }
     }
   } catch (err) {
     if (!(err instanceof UnparseableSchemaError)) throw err;
@@ -318,8 +448,12 @@ function main() {
     process.exit(1);
   }
 
-  if (missingDoc.length === 0 && missingNullSemantics.length === 0) {
-    console.log(`schema-comment-check: PASS — every new/changed column in ${files.join(", ")} has a /// doc comment.`);
+  const failures = missingDoc.length + missingNullSemantics.length + missingEnumDoc.length + missingEnumComment.length;
+  if (failures === 0) {
+    console.log(
+      `schema-comment-check: PASS — every new/changed column and enum member in ${files.join(", ")} ` +
+        "has a /// doc comment, and every touched enum carries a COMMENT ON TYPE.",
+    );
     return;
   }
 
@@ -347,6 +481,40 @@ function main() {
         "tell you which one. \"Not yet closed\", \"closed but the time is unknown\", \"closing is\n" +
         "not applicable to this row\" are three different columns with identical DDL. Say which\n" +
         "one this is in the /// comment — the word \"null\" must appear.",
+    );
+  }
+
+  if (missingEnumDoc.length > 0) {
+    console.error("\nschema-comment-check: FAIL — new/modified enum declarations or members without a /// doc comment:\n");
+    for (const v of missingEnumDoc) {
+      console.error(`  ${v.file}:${v.line}  ${v.enumName}${v.member ? `.${v.member}` : ""}`);
+    }
+    console.error(
+      "\nAn enum member's name is a label, not a definition. Say what the value means for a row\n" +
+        "that carries it — especially what it implies about how much to trust that row. Example:\n" +
+        "  /// The outcome was recovered from a unanimous voice vote; no per-member roll call was\n" +
+        "  /// heard, so individual positions are inferred rather than observed.\n" +
+        "  UNANIMOUS_RECOVERY",
+    );
+  }
+
+  if (missingEnumComment.length > 0) {
+    console.error("\nschema-comment-check: FAIL — enums changed without a matching COMMENT ON TYPE in a migration:\n");
+    for (const v of missingEnumComment) {
+      console.error(`  ${v.file}:${v.line}  ${v.enumName}  (expected: COMMENT ON TYPE "${v.dbName}")`);
+    }
+    console.error(
+      "\nPrisma Migrate does not emit COMMENT ON from /// doc comments, so without this the\n" +
+        "description exists only in the schema file and is invisible in psql, BI tools, and every\n" +
+        "other schema browser. Add a hand-written statement to this PR's migration.\n\n" +
+        "Postgres has NO per-label comment (COMMENT ON ENUM LABEL and COMMENT ON VALUE are both\n" +
+        "syntax errors), so fold the member descriptions into the one type-level comment:\n\n" +
+        '  COMMENT ON TYPE "VoteValue" IS\n' +
+        "    'How a legislator voted on a matter.\n" +
+        "     YEA: voted in favour. NAY: voted against. ABSTAIN: present and declined to vote.\n" +
+        "     RECUSED: withdrew for a declared conflict — distinct from ABSTAIN.';\n\n" +
+        "Restate the full member list each time the enum changes; the statement replaces the\n" +
+        "previous comment wholesale rather than appending to it.",
     );
   }
 

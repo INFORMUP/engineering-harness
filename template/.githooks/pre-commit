@@ -10,6 +10,60 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+# --- protected-branch guard --------------------------------------------------
+# Runs FIRST and exits before any of the checks below: this is a policy refusal,
+# not a quality gate, so there is no reason to spend seconds on formatting and
+# type-checks for a commit that must not exist.
+#
+# Every INFORMUP repo lands changes through a PR from a worktree, and the
+# integration branches are protected server-side — so a local commit on one can
+# never be pushed. It is always a mistake, but a SILENT one: the commit succeeds
+# and only surfaces later at `git push`, by which point the work sits on a branch
+# that a later fast-forward will refuse to advance.
+#
+# Which branches are protected differs by repo: TaskFlow integrates on `main`,
+# while reportal / ghost / dashboard-backend integrate on `staging` and promote
+# to `main`, so both are off-limits there. The default covers all of them; a repo
+# that needs a different set overrides it without editing this file:
+#
+#   git config informup.protectedBranches "main develop"
+#
+# A detached HEAD is deliberately allowed — that is a rebase or bisect, and
+# blocking it would break rebases outright, a worse failure than the one being
+# prevented. Escape hatch is the standard `git commit --no-verify`.
+PROTECTED_BRANCHES="$(git -C "$ROOT" config --get informup.protectedBranches || echo "main master staging")"
+current_branch="$(git -C "$ROOT" branch --show-current)"
+
+if [[ -n "$current_branch" ]]; then
+  for protected in $PROTECTED_BRANCHES; do
+    if [[ "$current_branch" == "$protected" ]]; then
+      cat >&2 <<EOF
+
+  ✗ refusing to commit on '$current_branch'
+
+  This repo lands every change through a PR opened from a worktree, and
+  '$current_branch' is protected on the server — this commit could never be pushed.
+
+  Move the work to a worktree off the integration branch:
+
+      git worktree add -b <type>/<short-desc> .claude/worktrees/<short-desc> origin/$current_branch
+
+  Staged changes stay staged — nothing is lost. To carry them across, commit from
+  inside the new worktree, or:
+
+      git stash push -m wip && cd .claude/worktrees/<short-desc> && git stash pop
+
+  Protected here: $PROTECTED_BRANCHES
+  (override with: git config informup.protectedBranches "...")
+
+  If you genuinely mean this, bypass with:  git commit --no-verify
+
+EOF
+      exit 1
+    fi
+  done
+fi
+
 # Keep docs/inventory.md (the reuse-surface index) in sync automatically:
 # regenerate from the working tree and stage it, so a commit touching the
 # reuse surface can't leave the index stale (CI drift-checks it; this spares

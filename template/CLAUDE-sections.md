@@ -28,7 +28,8 @@ Every implementation PR must satisfy all of these before requesting review. Agen
 ## Commit Workflow
 - **Session setup:** run `./install-pre-commit-hooks.sh` before your first commit in a session (idempotent). It activates the git hooks in `.githooks/`, so commits get the same formatting / type-check / reuse-inventory-sync gates CI enforces — caught locally instead of as a red build.
 - Run the affected package's tests before committing. Hooks are the fast path; CI is the guarantee.
-- No `--no-verify` and no force-push.
+- **Commits on a protected branch are refused** by the same hook, before any of the quality gates run. Defaults to `main`, `master`, and `staging` — the last matters for repos that integrate on `staging` and promote to `main`, where both are off-limits. A repo needing a different set overrides it without editing the shared hook: `git config informup.protectedBranches "main develop"`. A detached HEAD is allowed on purpose, so rebases and bisects still work.
+- No `--no-verify` and no force-push. The branch guard prints `--no-verify` as its escape hatch because it must be recoverable for a human in a genuine edge case; that is **not** licence for an agent to use it. If the guard fires, move the work to a worktree — that is what it is telling you to do.
 
 ## Worklog
 - **`docs/worklog/` holds issues found in passing and the reasoning behind them** — one file per item, written **when the item is discovered**, not when work on it starts. Discovery-time is when the evidence is free; reconstructing it later costs an investigation and yields a worse entry. Resolved entries move to `docs/worklog/archive/` with a `YYYY-MM-DD-HHMM-` filename prefix (UTC); they are never deleted.

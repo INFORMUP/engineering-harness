@@ -52,6 +52,20 @@ actors, so red CI stays unmergeable). Do **not** add a junior as a second
 owner to "fix" the deadlock — that lets them approve every other junior's
 work. Learned the hard way on the pilot (TaskFlow #318 → reverted in #319).
 
+## Modules (opt-in)
+
+`template/` is what every repo gets. A **module** under `modules/` is what only
+some repos get — a specific tracker, a specific stack — installed separately so
+the base template can stay honest about being universal:
+
+```bash
+scripts/install-module.sh <module> ~/src/your-repo   # no args: lists modules
+```
+
+| Module | What it does |
+|---|---|
+| [`taskflow`](modules/taskflow/README.md) | Every PR names the tracked item it implements (or declines one with a reason), and PRs that implement a task are linked to it automatically — so the tracker can answer "what shipped but was never closed". |
+
 ## The contract your repo provides
 
 The template is stack-agnostic; these five integration points are yours:

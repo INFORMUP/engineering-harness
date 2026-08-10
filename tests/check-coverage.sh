@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Coverage manifest gate for the template gate scripts.
 #
-# Asserts that every script shipped under template/.github/scripts/ has a
+# Asserts that every script shipped to consumers — under
+# template/.github/scripts/ or any modules/*/.github/scripts/ — has a
 # matching self-test in tests/, named <script-basename>.test.<ext>
 # (e.g. coverage-ratchet.sh -> tests/coverage-ratchet.test.sh,
 #        schema-comment-check.mjs -> tests/schema-comment-check.test.mjs).
@@ -19,30 +20,40 @@ set -u
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
-SCRIPTS_DIR="$REPO_ROOT/template/.github/scripts"
 TESTS_DIR="$REPO_ROOT/tests"
+
+# Modules ship gate scripts to consumers exactly as the template does, so they
+# are held to the same standard — an untested module script fans out just as
+# far. Globbed rather than listed, so a new module is covered on arrival.
+shopt -s nullglob
+SCRIPT_DIRS=("$REPO_ROOT/template/.github/scripts" "$REPO_ROOT"/modules/*/.github/scripts)
+shopt -u nullglob
 
 missing=0
 found=0
 
-for script in "$SCRIPTS_DIR"/*; do
-  [[ -f "$script" ]] || continue
-  found=$((found + 1))
-  base="$(basename "$script")"
-  name="${base%.*}" # strip the single trailing extension
+for scripts_dir in "${SCRIPT_DIRS[@]}"; do
+  [[ -d "$scripts_dir" ]] || continue
+  rel_dir="${scripts_dir#"$REPO_ROOT"/}"
+  for script in "$scripts_dir"/*; do
+    [[ -f "$script" ]] || continue
+    found=$((found + 1))
+    base="$(basename "$script")"
+    name="${base%.*}" # strip the single trailing extension
 
-  # A matching test is tests/<name>.test.<anything> — the test keeps its own
-  # extension (.mjs for node, .sh for bash), independent of the script's.
-  shopt -s nullglob
-  matches=("$TESTS_DIR/$name".test.*)
-  shopt -u nullglob
+    # A matching test is tests/<name>.test.<anything> — the test keeps its own
+    # extension (.mjs for node, .sh for bash), independent of the script's.
+    shopt -s nullglob
+    matches=("$TESTS_DIR/$name".test.*)
+    shopt -u nullglob
 
-  if [[ ${#matches[@]} -eq 0 ]]; then
-    echo "::error::no self-test for template/.github/scripts/$base (expected tests/$name.test.*)"
-    missing=1
-  else
-    echo "OK: $base -> $(basename "${matches[0]}")"
-  fi
+    if [[ ${#matches[@]} -eq 0 ]]; then
+      echo "::error::no self-test for $rel_dir/$base (expected tests/$name.test.*)"
+      missing=1
+    else
+      echo "OK: $base -> $(basename "${matches[0]}")"
+    fi
+  done
 done
 
 # Guard against a silent pass if the scripts directory ever moves or empties:

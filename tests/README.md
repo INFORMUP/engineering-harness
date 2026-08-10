@@ -1,20 +1,23 @@
 # Self-tests for the template gate scripts
 
-This directory holds self-tests for the gate scripts shipped under
-`template/.github/scripts/`:
+This directory holds self-tests for the gate scripts shipped to consumer
+repos, whether from `template/.github/scripts/` or from an opt-in module's
+`modules/*/.github/scripts/`:
 
 - `schema-comment-check.mjs` — the diff-scoped Prisma column-comment gate.
 - `coverage-ratchet.sh` — the per-package coverage floor/ratchet check.
+- `taskflow-link.mjs` — the TaskFlow module's task gate and PR linker.
 
 ## The one rule: every gate script has a matching self-test
 
-Each script under `template/.github/scripts/` **must** have a self-test named
+Each shipped script **must** have a self-test named
 `tests/<script-basename>.test.<ext>`:
 
 | Script                                       | Self-test                              |
 | -------------------------------------------- | -------------------------------------- |
 | `template/.github/scripts/coverage-ratchet.sh`     | `tests/coverage-ratchet.test.sh`       |
 | `template/.github/scripts/schema-comment-check.mjs`| `tests/schema-comment-check.test.mjs`  |
+| `modules/taskflow/.github/scripts/taskflow-link.mjs`| `tests/taskflow-link.test.mjs`         |
 
 The test keeps its own extension (`.mjs` for a node test, `.sh` for a bash
 test), independent of the script's. `tests/check-coverage.sh` enforces this
@@ -32,7 +35,8 @@ needs to live in `scripts/`, that is the moment to add an escape hatch to
 ## Why these live at the repo root, not under `template/`
 
 `scripts/install.sh` copies everything under `template/` verbatim into
-consumer repos. Anything under `template/` ships downstream. These tests (and
+consumer repos, and `scripts/install-module.sh` does the same for a module.
+Anything under `template/` or `modules/` ships downstream. These tests (and
 the CI workflow that runs them) test the harness's own scripts, so they stay
 at the repo root — outside `template/` — and are never installed into a
 consumer repo.

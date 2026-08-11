@@ -228,16 +228,32 @@ describe("linking", () => {
     assert.match(logs, /::warning::TaskFlow unreachable/);
   });
 
-  test("a 5xx warns and passes; a 4xx does not", async () => {
+  test("a 5xx warns and passes; a 4xx about the PR does not", async () => {
     const down = await runScript({ PR_BODY: "## Task\nFEAT-12\n" }, [
       { status: 503, body: null },
     ]);
     assert.equal(down.code, 0);
 
-    const denied = await runScript({ PR_BODY: "## Task\nFEAT-12\n" }, [
-      { status: 403, body: { error: { code: "FORBIDDEN", message: "scope" } } },
+    const notFound = await runScript({ PR_BODY: "## Task\nFEAT-12\n" }, [
+      taskLookup,
+      { status: 404, body: { error: { code: "NOT_FOUND", message: "gone" } } },
     ]);
-    assert.equal(denied.code, 1);
+    assert.equal(notFound.code, 1);
+  });
+
+  test("a rejected credential warns and passes", async () => {
+    // 401/403 means this repo's stored secret is wrong, revoked, or missing a
+    // scope. Every PR fails identically on something no author can fix, which
+    // is the shape that gets a required check switched off. Report it where the
+    // person who can rotate it will see it, and let the work through.
+    for (const status of [401, 403]) {
+      const { code, logs } = await runScript({ PR_BODY: "## Task\nFEAT-12\n" }, [
+        { status, body: { error: { code: "UNAUTHORIZED", message: "Invalid or expired token" } } },
+      ]);
+      assert.equal(code, 0, `HTTP ${status} should not fail the check`);
+      assert.match(logs, /::warning::TaskFlow rejected this repo's credential/);
+      assert.match(logs, /TASKFLOW_API_TOKEN/);
+    }
   });
 
   test("missing credentials (fork PR) warn but keep the gate", async () => {

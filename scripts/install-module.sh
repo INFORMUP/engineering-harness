@@ -27,7 +27,8 @@ fi
 
 SRC="$MODULES/$MODULE"
 [[ -d "$SRC" ]] || { echo "ERROR: no module '$MODULE' under modules/"; exit 1; }
-[[ -d "$TARGET/.git" ]] || { echo "ERROR: $TARGET is not a git repo"; exit 1; }
+# -e, not -d: see install.sh — `.git` is a file in a linked worktree.
+[[ -e "$TARGET/.git" ]] || { echo "ERROR: $TARGET is not a git repo"; exit 1; }
 
 copied=0; skipped=0
 while IFS= read -r -d '' f; do

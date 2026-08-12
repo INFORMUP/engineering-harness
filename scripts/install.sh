@@ -9,7 +9,10 @@ TARGET="${1:?usage: install.sh /path/to/target-repo}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$DIR/template"
 
-[[ -d "$TARGET/.git" ]] || { echo "ERROR: $TARGET is not a git repo"; exit 1; }
+# -e, not -d: in a linked worktree (and in a submodule) `.git` is a FILE holding
+# a `gitdir:` pointer. Every INFORMUP repo is worked in worktrees by convention,
+# so a directory-only test refuses the normal case.
+[[ -e "$TARGET/.git" ]] || { echo "ERROR: $TARGET is not a git repo"; exit 1; }
 
 copied=0; skipped=0
 while IFS= read -r -d '' f; do

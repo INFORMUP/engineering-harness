@@ -1,6 +1,6 @@
 # <short title: what's wrong, in behavioral terms>
 
-- **Status:** open <!-- open → resolved (then move to archive/ with a YYYY-MM-DD-HHMM- prefix) -->
+- **Status:** open <!-- open → resolved (then move to archives/ with a YYYY-MM-DD-HHMM- prefix) -->
 - **Found:** <YYYY-MM-DD>, while <what you were actually doing when this surfaced>
 - **Escalated:** no <!-- or: <tracker task id> — see "promote by link, not by copy" in CLAUDE.md -->
 

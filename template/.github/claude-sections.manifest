@@ -1,0 +1,24 @@
+# Sections the harness expects to find in this repo's root CLAUDE.md.
+#
+# One `## ` heading per line, copied from the harness's
+# template/CLAUDE-sections.md. `.github/scripts/claude-sections-check.sh`
+# fails the build when a listed heading is missing, which is what turns
+# "splice these sections in" from a printed instruction into a gate.
+#
+# Blank lines and `#` comments are ignored. Match is on the exact heading
+# line, so a repo may reword a section's *body* freely — the heading is the
+# contract, the prose under it is the repo's own.
+#
+# When the harness adds a section, this file changes with it; a consumer
+# picks the change up on its next sync and its CI goes red until the section
+# is spliced. That is deliberate — the redness IS the notification, since
+# nothing else tells a repo the shared guidance has moved.
+
+## Definition of Done
+## Code Style
+## Commit Workflow
+## Worklog
+## Architecture decisions (ADRs)
+## Schema conventions
+## Tenant scoping
+## Mistakes

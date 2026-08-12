@@ -237,3 +237,12 @@ jobs:
       # Uses the runner's preinstalled Node; no setup-node needed.
       - name: Prisma column and enum comments
         run: node .github/scripts/schema-comment-check.mjs
+
+      # The harness's shared CLAUDE.md sections have to reach the file agents
+      # actually read. Splicing them is a manual installer step, and across the
+      # first six consumer repos it was skipped every time — so the guidance
+      # shipped, and landed nowhere. Not diff-scoped on purpose: this asserts a
+      # standing property of the repo rather than something about the PR, so a
+      # repo that drops a section later goes red on its next PR.
+      - name: CLAUDE.md harness sections
+        run: bash .github/scripts/claude-sections-check.sh

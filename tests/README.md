@@ -5,6 +5,8 @@ repos, whether from `template/.github/scripts/` or from an opt-in module's
 `modules/*/.github/scripts/`:
 
 - `schema-comment-check.mjs` — the diff-scoped Prisma column-comment gate.
+- `claude-sections-check.sh` — the gate asserting the shared CLAUDE.md sections
+  were spliced into the consumer repo.
 - `coverage-ratchet.sh` — the per-package coverage floor/ratchet check.
 - `taskflow-link.mjs` — the TaskFlow module's task gate and PR linker.
 
@@ -17,6 +19,7 @@ Each shipped script **must** have a self-test named
 | -------------------------------------------- | -------------------------------------- |
 | `template/.github/scripts/coverage-ratchet.sh`     | `tests/coverage-ratchet.test.sh`       |
 | `template/.github/scripts/schema-comment-check.mjs`| `tests/schema-comment-check.test.mjs`  |
+| `template/.github/scripts/claude-sections-check.sh` | `tests/claude-sections-check.test.sh`  |
 | `modules/taskflow/.github/scripts/taskflow-link.mjs`| `tests/taskflow-link.test.mjs`         |
 
 The test keeps its own extension (`.mjs` for a node test, `.sh` for a bash

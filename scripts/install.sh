@@ -39,7 +39,15 @@ Manual follow-ups (the parts that are per-stack by design):
     senior engineer(s) — usually ONE. See the file header for why a second
     non-senior owner dissolves the review gate.
  2. Splice template CLAUDE-sections.md into the repo's root CLAUDE.md,
-    then DELETE CLAUDE-sections.md from the target.
+    then DELETE CLAUDE-sections.md from the target. Keep each '## ' heading
+    verbatim; adapt the prose under it to this stack.
+    This one is VERIFIED, not trusted: the pr-gates 'CLAUDE.md harness
+    sections' step fails while any heading in
+    .github/claude-sections.manifest is absent from CLAUDE.md. Skipping the
+    splice was the default outcome before that gate existed — it happened in
+    every one of the first six consumer repos — so expect red CI until it is
+    done. If a section truly doesn't apply here, drop its manifest line in the
+    same PR rather than leaving the gate red.
  3. Wire your test workflow: run tests with a json-summary coverage reporter,
     then call .github/scripts/coverage-ratchet.sh <package-key> from each
     package dir. Keys must match .github/coverage-baseline.json (floors ship

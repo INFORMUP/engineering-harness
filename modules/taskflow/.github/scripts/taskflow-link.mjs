@@ -130,6 +130,8 @@ export function resolveTaskIntent({ section, branch }) {
 class TaskflowClientError extends Error {}
 /** Thrown when TaskFlow itself couldn't answer — never the author's fault. */
 class TaskflowUnavailableError extends Error {}
+/** Thrown when the repo's own stored credential is what TaskFlow refused. */
+class TaskflowCredentialError extends Error {}
 
 async function apiFetch({ apiUrl, token, path, method = "GET", body, fetchImpl }) {
   let res;
@@ -153,6 +155,9 @@ async function apiFetch({ apiUrl, token, path, method = "GET", body, fetchImpl }
   const message = payload?.error?.message ?? `request failed (${res.status})`;
   if (res.status >= 500) {
     throw new TaskflowUnavailableError(`${detail}: ${message}`);
+  }
+  if (res.status === 401 || res.status === 403) {
+    throw new TaskflowCredentialError(`${detail}: ${message}`);
   }
   throw new TaskflowClientError(`${detail}: ${message}`);
 }
@@ -235,6 +240,19 @@ export async function run({ env, fetchImpl = fetch, log = console.log }) {
       // The tracker being down is not a code-review finding. Say so loudly and
       // let the PR through — re-run this job once TaskFlow is back to link it.
       log(`::warning::TaskFlow unreachable — ${err.message}. Re-run this job to link the PR.`);
+      return 0;
+    }
+    if (err instanceof TaskflowCredentialError) {
+      // Same reasoning as the outage above, and for the same reason it must not
+      // block: a wrong or expired secret fails every PR in the repo identically,
+      // on something only a repo admin can put right. A check that no author can
+      // ever turn green is a check that gets switched off, taking the offline
+      // gate — the half that does work — with it.
+      log(
+        `::warning::TaskFlow rejected this repo's credential — ${err.message}. ` +
+          `The gate passed but the PR was NOT linked: a repo admin should refresh the ` +
+          `TASKFLOW_API_TOKEN secret, then re-run this job.`,
+      );
       return 0;
     }
     log(`::error::could not link this PR — ${err.message}`);

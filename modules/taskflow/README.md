@@ -77,7 +77,16 @@ Failure modes and how they're treated:
 | `None` with no reason | **fail** — the escape hatch requires the reason |
 | Task ID doesn't resolve, or the repo isn't on the task's project | **fail** — a wrong link is worse than none |
 | TaskFlow unreachable or 5xx (it sleeps overnight in some deployments) | **pass with a warning** — re-run the job to link |
+| Credential rejected, 401/403 (secret wrong, revoked, or missing a scope) | **pass with a warning** — a repo admin refreshes the secret, then re-runs |
 | Fork PR (GitHub withholds secrets by design) | **pass with a warning** — the gate still applied |
+
+The dividing line is **who can fix it**. Everything the author controls — the
+body, the branch, the task reference — blocks, because they can turn it green.
+Everything else passes with a warning, because they cannot: a wrong secret fails
+every PR in the repo identically, and a required check that no author can ever
+satisfy is one that gets switched off, which would take the offline gate down
+with it. The warning is aimed at the repo admin, who is the only person who can
+act on it.
 
 Linking is idempotent: re-running the job on an already-linked PR is a no-op.
 

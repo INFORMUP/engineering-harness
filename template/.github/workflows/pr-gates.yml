@@ -225,10 +225,15 @@ jobs:
           fi
           node scripts/generate-inventory.mjs --check
 
-      # Every new/changed Prisma column must carry a `///` doc comment (spell out
-      # acronyms and units). Diff-scoped: existing columns are grandfathered, so
-      # only the lines this PR touches are enforced. The script self-skips (exit
-      # 0) when no `*.prisma` files changed, so this is a no-op in repos without
-      # Prisma. Uses the runner's preinstalled Node; no setup-node needed.
-      - name: Prisma column comments
+      # Every new/changed Prisma column and enum member must carry a `///` doc
+      # comment (spell out acronyms and units). Diff-scoped: existing columns and
+      # enums are grandfathered, so only the lines this PR touches are enforced.
+      # Touched enums additionally need a hand-written `COMMENT ON TYPE` in the
+      # PR's migration, because Prisma Migrate does not emit one and Postgres has
+      # no per-label comment — that single type-level statement is the only place
+      # member descriptions can reach the database. That half is skipped unless
+      # the datasource provider is postgresql. The script self-skips (exit 0) when
+      # no `*.prisma` files changed, so this is a no-op in repos without Prisma.
+      # Uses the runner's preinstalled Node; no setup-node needed.
+      - name: Prisma column and enum comments
         run: node .github/scripts/schema-comment-check.mjs

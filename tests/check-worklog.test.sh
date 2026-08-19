@@ -211,7 +211,7 @@ run --dir "$D"
 check "archived file without the YYYY-MM-DD-HHMM- prefix: exit 1" "$([[ $rc -eq 1 ]]; echo $?)"
 
 # ------------------------------------------------------------- required sections
-for section in "Observation" "Evidence" "Why it matters"; do
+for section in "Observation" "Evidence"; do
   slug="$(echo "$section" | tr ' A-Z' '-a-z')"
   D="$(new_dir "missing$slug")"
   sed -i "/^## $section\$/d" "$D/widget-fails-on-restart.md"
@@ -219,12 +219,29 @@ for section in "Observation" "Evidence" "Why it matters"; do
   check "missing '## $section' section: exit 1" "$([[ $rc -eq 1 ]]; echo $?)"
 done
 
-# Not every entry is an issue — an entry recording an executed change weighed no
-# alternatives, and an empty heading is worse than an absent one.
+# Not every entry is an issue. A ruling or an execution record weighed no
+# alternatives and argues its own significance nowhere, because the significance
+# IS the document — so both of these headings are expected, not enforced. An
+# empty heading is worse than an absent one.
 D="$(new_dir noapproaches)"
 sed -i '/^## Approaches considered$/,+2d' "$D/widget-fails-on-restart.md"
 run --dir "$D"
 check "missing '## Approaches considered' is allowed" "$([[ $rc -eq 0 ]]; echo $?)"
+
+D="$(new_dir nowhyitmatters)"
+sed -i '/^## Why it matters$/,+2d' "$D/widget-fails-on-restart.md"
+run --dir "$D"
+check "missing '## Why it matters' is allowed" "$([[ $rc -eq 0 ]]; echo $?)"
+
+# The required headings are matched as whole lines, so appending context to one
+# does not satisfy it. That strictness is what keeps 170 entries comparable; the
+# finding says so, because the fix is not obvious from the failure.
+D="$(new_dir headingsuffix)"
+sed -i 's/^## Evidence$/## Evidence — what the queries returned/' "$D/widget-fails-on-restart.md"
+run --dir "$D"
+check "a required heading with extra text appended: exit 1" "$([[ $rc -eq 1 ]]; echo $?)"
+grep -q 'exactly that line' "$TMP/out"
+check "the finding explains that the heading must be the bare line" $?
 
 D="$(new_dir noresolutionopen)"
 sed -i '/^## Resolution$/,+2d' "$D/widget-fails-on-restart.md"

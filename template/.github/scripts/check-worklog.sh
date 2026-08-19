@@ -66,13 +66,23 @@ fi
 # off `fixed` (docs/worklog/CLAUDE.md).
 readonly VALID_STATUSES="open fixed resolved superseded"
 readonly ARCHIVED_STATUSES="resolved superseded"
-# Only sections every entry genuinely has. Not every entry is an issue — some
-# record an executed change — and those have no alternatives that were weighed, so
-# requiring "Approaches considered" everywhere would buy conformance in empty
-# headings. It stays expected-but-unenforced (docs/worklog/CLAUDE.md); an empty
-# section is worse than an absent one. Resolution is required only once the entry
-# is archived, checked below, since an open entry has nothing to put there.
-readonly REQUIRED_SECTIONS=("Observation" "Evidence" "Why it matters")
+# Only the sections every entry genuinely has: what was seen, and the proof.
+#
+# Not every entry is an issue. A ruling, an execution record, a reconnaissance
+# note — each of those has an observation and evidence, and neither alternatives
+# that were weighed nor a passage arguing its own significance, because the
+# significance IS the document. Requiring "Approaches considered" or "Why it
+# matters" everywhere would buy conformance in empty headings, and an empty
+# section is worse than an absent one. Both stay expected-but-unenforced
+# (docs/worklog/CLAUDE.md).
+#
+# This is measured, not assumed: enforcing "Why it matters" across a 170-entry
+# worklog left seven entries with nothing to put under it that was not already
+# said elsewhere in them.
+#
+# "Resolution" is required only once the entry is archived, checked below — an
+# open entry has nothing to put there.
+readonly REQUIRED_SECTIONS=("Observation" "Evidence")
 readonly ARCHIVE_PREFIX_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}-'
 # Words that carry no subject, so agreement on them says nothing about whether a
 # filename still describes its entry.
@@ -192,7 +202,7 @@ check_entry() { # <path> <is_archived>
   local section
   for section in "${REQUIRED_SECTIONS[@]}"; do
     grep -qxF "## $section" "$f" || \
-      finding "$f" "no '## $section' section (extra sections are fine; this one is not optional)"
+      finding "$f" "no '## $section' section — the heading must be exactly that line, so put any extra context in the body rather than after the heading text (extra sections are fine; this one is not optional)"
   done
 
   # --- head/log split -----------------------------------------------------

@@ -22,6 +22,7 @@ Design rationale: [docs/PROPOSAL.md](docs/PROPOSAL.md) ·
 | Docs have owners and lifecycles | taxonomy | `docs/README.md` |
 | Style is human-governed, agent-cited | house style guide (agents never edit) | `docs/style.md` |
 | Duplication is intentional, never accidental | generated reuse inventory (drift-checked) + PR `## Reuse` section + reuse gate on new exports + advisory `jscpd` | `scripts/generate-inventory.mjs` + `pr-gates.yml` + `duplication.yml` |
+| Worklog entries stay true to themselves | status vocabulary + placement + dangling-citation check, gated in CI; scripted close that repoints citations | `.github/scripts/check-worklog.sh` + `archive-worklog.sh` |
 | Agents generate conforming work | Definition of Done + Mistakes flywheel | `CLAUDE-sections.md` → target `CLAUDE.md` |
 | All of the above is **binding**, not advisory | **two** repository rulesets: `main-integrity` (required checks, linear history, no force-push — **no bypass actors, admins included**) + `main-review` (squash-only, thread resolution, 1 CODEOWNER review — PR-mode admin waiver for the sole senior's own PRs) | `rulesets/` + `scripts/install-ruleset.sh` |
 

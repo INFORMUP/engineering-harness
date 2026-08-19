@@ -310,6 +310,34 @@ check "missing --dir target: exit 2" "$([[ $rc -eq 2 ]]; echo $?)"
 run --help
 check "--help: exit 0" "$([[ $rc -eq 0 ]]; echo $?)"
 
+# ------------------------------------------------------- filename/title agreement
+# The heuristic behind the "filename shares no word with the title" finding. It
+# leans generous on purpose: a missed agreement is a finding the repo can only
+# clear by renaming a file other files cite by path.
+D="$(new_dir slugs)"
+write_entry "$D" "api-tests-ci-duration.md" \
+  'The `api-tests` CI job takes ~10 minutes, and most of it is rebuilding the app' "open"
+run --dir "$D"
+check "a title's backticked identifier still counts as a word" "$([[ $rc -eq 0 ]]; echo $?)"
+
+D="$(new_dir slugs-inflect)"
+write_entry "$D" "orphan-refs-on-delete.md" \
+  "Deleting a survey leaves its article reference behind, and nothing notices" "open"
+run --dir "$D"
+check "delete/deleting agree — a shared stem, not a shared prefix" "$([[ $rc -eq 0 ]]; echo $?)"
+
+D="$(new_dir slugs-contain)"
+write_entry "$D" "source-pg-tls-unverified.md" \
+  "The connection to a legacy Postgres is encrypted but not certificate-verified" "open"
+run --dir "$D"
+check "unverified/verified agree — the shorter is contained in the longer" "$([[ $rc -eq 0 ]]; echo $?)"
+
+D="$(new_dir slugs-drifted)"
+write_entry "$D" "widget-fails-on-restart.md" \
+  "Invoices are emailed twice whenever a payment retries" "open"
+run --dir "$D"
+check "a slug sharing genuinely nothing with the title is still a finding" "$([[ $rc -eq 1 ]]; echo $?)"
+
 # ------------------------------------------------------------ dangling references
 # Archiving renames the entry; anything citing the old path goes quietly dangling.
 # Needs a real git repo laid out like this one, since the scan is repo-root-relative.

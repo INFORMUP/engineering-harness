@@ -95,24 +95,41 @@ entry_title() { # <file>
   sed -n '1s/^# *//p' "$1"
 }
 
-# Split a filename slug or a title into comparable lowercase word tokens.
+# Split a filename slug or a title into comparable lowercase word tokens. The
+# backticks are dropped and their CONTENTS kept: a title's code spans name the
+# very identifiers a slug tends to be built from, so discarding them made
+# `api-tests-ci-duration.md` share no word with "The `api-tests` CI job takes ~10
+# minutes" — a finding with nothing wrong behind it.
 tokens() { # <text>
   echo "$1" \
     | tr 'A-Z' 'a-z' \
-    | sed -E 's/`[^`]*`/ /g; s/[^a-z0-9]+/ /g' \
+    | sed -E 's/[^a-z0-9]+/ /g' \
     | tr ' ' '\n' \
     | grep -vE '^$'
 }
 
 is_stopword() { [[ "$SLUG_STOPWORDS" == *" $1 "* ]]; }
 
-# Two tokens agree if one is a prefix of the other and the shared stem is long
-# enough to be a subject word — so run/runs and secret/secrets match, but the
-# accidental overlap of two short fragments does not.
+# Two tokens agree if the shorter is contained in the longer, or if they share a
+# long enough prefix. Containment covers run/runs and verified/unverified;
+# the prefix arm covers inflections that containment misses, delete/deleting
+# being the one that motivated it.
+#
+# Both arms are deliberately generous, because the two errors are not
+# symmetrical. A missed agreement is a finding the repo cannot clear without
+# renaming a file that other files cite by path — the expensive direction. A
+# spurious agreement only costs a slug that drifted going unnoticed, which is
+# what this heuristic was always going to miss some of. So when in doubt, agree.
+readonly TOKEN_CONTAIN_MIN=4
+readonly TOKEN_PREFIX_MIN=5
 tokens_agree() { # <a> <b>
-  local a=$1 b=$2 short long
+  local a=$1 b=$2 short long i
   if [[ ${#a} -le ${#b} ]]; then short=$a; long=$b; else short=$b; long=$a; fi
-  [[ ${#short} -ge 3 && "$long" == "$short"* ]]
+  [[ ${#short} -ge $TOKEN_CONTAIN_MIN && "$long" == *"$short"* ]] && return 0
+  for ((i = ${#short}; i >= TOKEN_PREFIX_MIN; i--)); do
+    [[ "${long:0:i}" == "${short:0:i}" ]] && return 0
+  done
+  return 1
 }
 
 # ------------------------------------------------------------------------ checks

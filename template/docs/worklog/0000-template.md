@@ -1,6 +1,7 @@
 # <short title: what's wrong, in behavioral terms>
 
-- **Status:** open <!-- open → resolved (then move to archives/ with a YYYY-MM-DD-HHMM- prefix) -->
+- **Status:** open <!-- open | fixed | resolved | superseded — one bare word, nothing else -->
+- **Next action:** <what has to happen next, and whose call it is — prose belongs here, not in the status slot>
 - **Found:** <YYYY-MM-DD>, while <what you were actually doing when this surfaced>
 - **Escalated:** no <!-- or: <tracker task id> — see "promote by link, not by copy" in CLAUDE.md -->
 
@@ -31,4 +32,9 @@
 ## Resolution
 
 <!-- Appended when it lands: the PR, or the decision not to act and why.
-     Only a human closes an entry. -->
+     Set the status to `fixed` the moment the change ships — the entry stays
+     here, in the open directory, because only a human closes it. Closing is
+     `.github/scripts/archive-worklog.sh <slug> --apply`, which stamps
+     `resolved`, moves the file under archives/ with a YYYY-MM-DD-HHMM- prefix,
+     and repoints every citation of it in the repo. Never do that move by
+     hand. -->

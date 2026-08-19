@@ -66,8 +66,16 @@ Manual follow-ups (the parts that are per-stack by design):
     matching REUSE_PATHS in pr-gates.yml (lockstep!), then seed the index:
        node scripts/generate-inventory.mjs
  7. TS stacks: add the lint-level suppression rules (see README §Suppressions).
- 8. Create the 'size-override' and 'coverage-override' labels:
+ 8. Worklog: docs/worklog/ ships a template, a CLAUDE.md of conventions, and
+    two scripts (.github/scripts/check-worklog.sh, archive-worklog.sh). The
+    checker is a pr-gates step and is NOT diff-scoped — it asserts a property
+    of the whole directory — so a repo with existing entries goes red until
+    they conform. Size the work first:
+       bash .github/scripts/check-worklog.sh
+    Close entries with archive-worklog.sh, never a hand `git mv`: it repoints
+    every citation of the entry, and a missed one fails the next PR, not yours.
+ 9. Create the 'size-override' and 'coverage-override' labels:
        gh label create size-override; gh label create coverage-override
- 9. Make it all binding:
+ 10. Make it all binding:
        scripts/install-ruleset.sh ORG/REPO <your-check-names>
 EOF

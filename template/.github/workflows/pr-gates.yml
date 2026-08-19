@@ -238,6 +238,29 @@ jobs:
       - name: Prisma column and enum comments
         run: node .github/scripts/schema-comment-check.mjs
 
+      # Worklog hygiene. An entry rots by being appended to: the status line is
+      # the field furthest from wherever the update was typed, so it keeps its
+      # old value while the log below records the opposite. This checks the
+      # mechanically detectable half — header shape, the four-word status
+      # vocabulary, status/location agreement, a required Resolution once
+      # archived, filename/title agreement, and citations left dangling by an
+      # archive rename.
+      #
+      # Not diff-scoped, deliberately: a dangling citation is created by the PR
+      # that archived the entry and only *breaks* somewhere else, so a
+      # diff-scoped version would let exactly the failure this exists to catch
+      # through. Skips cleanly in a repo with no worklog yet. Adopting it in a
+      # repo with existing entries means cleaning them first — the gate is
+      # all-or-nothing by design.
+      - name: Worklog hygiene
+        run: |
+          set -euo pipefail
+          if [[ ! -d docs/worklog ]]; then
+            echo "SKIP: docs/worklog/ not present in this repo yet."
+            exit 0
+          fi
+          bash .github/scripts/check-worklog.sh
+
       # The harness's shared CLAUDE.md sections have to reach the file agents
       # actually read. Splicing them is a manual installer step, and across the
       # first six consumer repos it was skipped every time — so the guidance

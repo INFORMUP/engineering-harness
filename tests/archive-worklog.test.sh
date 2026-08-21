@@ -119,6 +119,32 @@ check "the status is stamped resolved" $?
 ! grep -q 'someone owes this a fix' "$ARCHIVED"
 check "a stale Next action does not survive the close" $?
 
+# A wrapped Next action is one field, not one line. Rewriting only its first
+# line leaves the tail welded onto the replacement — and the tail is the stale
+# half, so an archived entry ends up asserting in the present tense that the
+# closed thing is still owed something. Nothing downstream catches it: the
+# first line is still well-formed, so the checker sees a valid header.
+R7="$TMP/wrapped"; make_repo "$R7"
+python3 - "$R7/docs/worklog/an-entry.md" <<'WRAP'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace(
+    "- **Next action:** someone owes this a fix",
+    "- **Next action:** someone owes this a fix, and the reason\n  runs past the width of one line\n  and then some",
+))
+WRAP
+git -C "$R7" commit -qam "wrapped next action"
+( cd "$R7" && WORKLOG_ARCHIVE_TIMESTAMP=2026-08-19-1344 "$SCRIPT" an-entry --apply ) >/dev/null 2>&1
+WRAPPED="$R7/docs/worklog/archives/2026-08-19-1344-an-entry.md"
+! grep -q 'runs past the width of one line' "$WRAPPED" \
+  && ! grep -q 'and then some' "$WRAPPED"
+check "a wrapped Next action is replaced whole, tail and all" $?
+
+# The field ends where the next bullet begins; eating past it would take the
+# rest of the header with it.
+grep -q '^- \*\*Found:\*\* 2026-08-01$' "$WRAPPED"
+check "the bullet after a wrapped Next action survives" $?
+
 # The point of the whole script.
 grep -q 'docs/worklog/archives/2026-08-19-1344-an-entry.md' "$R2/CLAUDE.md" \
   && grep -q 'docs/worklog/archives/2026-08-19-1344-an-entry.md' "$R2/scripts/ops/thing.sh" \

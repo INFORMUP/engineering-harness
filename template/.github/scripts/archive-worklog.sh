@@ -62,10 +62,38 @@ archive_name() { # <slug> <timestamp>
 
 # ------------------------------------------------------------------ header edits
 
+# Replaces one header bullet — the whole field, not its first line. A bullet's
+# value wraps onto indented continuation lines whenever the prose is longer than
+# the width, and a line-anchored rewrite leaves those behind welded onto the
+# replacement. The stranded half is always the stale one, so the failure is an
+# archived entry whose header asserts, in the present tense, that the closed
+# thing is still owed something — and `check-worklog.sh` cannot see it, because
+# the first line is still a well-formed bullet.
+#
+# The field ends at the next bullet, a blank line, or a heading; anything
+# indented before that belongs to it.
+set_header_field() { # <file> <label> <text>
+    local f="$1" label="$2"
+    local tmp="$f.tmp.$$"
+    HEADER_FIELD_TEXT="$3" awk -v label="$label" '
+        BEGIN { text = ENVIRON["HEADER_FIELD_TEXT"]; replaced = 0; dropping = 0 }
+        !replaced && $0 ~ "^- \\*\\*" label ":\\*\\*" {
+            print "- **" label ":** " text
+            replaced = 1; dropping = 1
+            next
+        }
+        dropping {
+            if ($0 ~ /^[[:space:]]+[^[:space:]]/) next
+            dropping = 0
+        }
+        { print }
+    ' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
 set_status() { # <file> <status>
     local f="$1" status="$2"
     grep -qE '^- \*\*Status:\*\*' "$f" || error "$f has no '- **Status:**' bullet"
-    sed -i -E "s|^- \*\*Status:\*\*.*|- **Status:** $status|" "$f"
+    set_header_field "$f" 'Status' "$status"
 }
 
 # A closed entry has no next action, and leaving the one it had is the exact rot
@@ -74,7 +102,7 @@ set_status() { # <file> <status>
 set_next_action() { # <file> <text>
     local f="$1" text="$2"
     grep -qE '^- \*\*Next action:\*\*' "$f" || return 0
-    sed -i -E "s|^- \*\*Next action:\*\*.*|- **Next action:** $text|" "$f"
+    set_header_field "$f" 'Next action' "$text"
 }
 
 # `check-worklog.sh` requires an archived entry to carry a Resolution, but it

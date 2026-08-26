@@ -52,8 +52,13 @@ Manual follow-ups (the parts that are per-stack by design):
     then call .github/scripts/coverage-ratchet.sh <package-key> from each
     package dir. Keys must match .github/coverage-baseline.json (floors ship
     null — pin them from your first CI run's reported numbers).
- 4. Edit .githooks/pre-commit for your stack (typecheck slots are commented
-    examples), then activate hooks:
+ 4. Configure .githooks/pre-commit for your stack. It ships with
+    TYPECHECK=unconfigured and REFUSES every commit until you set it to
+    `configured` (and fill in the commands below it) or to `none` (this repo
+    has no typecheck). It fails closed on purpose: the block used to ship
+    commented out, four repos never adapted it, and their hooks announced
+    "checks passed" having verified nothing. Commit the change — the decision
+    belongs in version control so every clone inherits it. Then activate hooks:
        ./install-pre-commit-hooks.sh
     Add the session-setup note to CLAUDE.md so agents run it too (see
     CLAUDE-sections.md's Commit Workflow). Agents working in git worktrees

@@ -8,8 +8,13 @@
 # subdirectory, whether it fires inside a linked worktree, whether --no-verify still
 # bypasses. Invoking the script by hand would pass while all of those were broken.
 #
-# The repos here carry no package.json and no scripts/, so every later block in the
-# hook short-circuits on its own `[[ -f ... ]]` guard and only the branch guard runs.
+# The repos here carry no package.json and no scripts/, so those blocks short-circuit
+# on their own `[[ -f ... ]]` guards. The typecheck block does NOT self-skip — it fails
+# closed until a repo adapts it — so `new_repo` opts these fixtures out with
+# TYPECHECK=none, leaving only the branch guard live. That is isolation of the unit
+# under test, not a workaround: a throwaway repo with one text file genuinely has no
+# typecheck to run, and the fail-closed behaviour has its own suite next door
+# (pre-commit-typecheck-gate.test.sh).
 #
 # Deliberately NOT `set -e`: we want every assertion to run.
 set -uo pipefail
@@ -32,6 +37,7 @@ new_repo() { # <name> <initial-branch>
   git_c init -q -b "${2:-main}" "$work"
   mkdir -p "$work/.githooks"
   cp "$HOOK" "$work/.githooks/pre-commit"
+  sed -i 's/^TYPECHECK=unconfigured$/TYPECHECK=none/' "$work/.githooks/pre-commit"
   chmod +x "$work/.githooks/pre-commit"
   git_c -C "$work" config core.hooksPath .githooks
   echo base > "$work/base.txt"

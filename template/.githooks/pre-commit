@@ -64,6 +64,13 @@ EOF
   done
 fi
 
+# How many real checks actually ran. The closing line reports against this
+# rather than asserting success unconditionally: a hook that verified nothing
+# must never print "checks passed", because that reads — to a human and to an
+# agent — exactly like a gate that ran and approved the change. That false
+# assurance is what let a type error into tissue-core's main on 2026-08-25.
+checks_run=0
+
 # Keep docs/inventory.md (the reuse-surface index) in sync automatically:
 # regenerate from the working tree and stage it, so a commit touching the
 # reuse surface can't leave the index stale (CI drift-checks it; this spares
@@ -73,6 +80,7 @@ if [[ -f "$ROOT/scripts/generate-inventory.mjs" ]]; then
   echo "==> Regenerating reuse inventory (docs/inventory.md)..."
   (cd "$ROOT" && node scripts/generate-inventory.mjs)
   git -C "$ROOT" add docs/inventory.md
+  checks_run=$((checks_run + 1))
 fi
 
 # Mirror the CI `format` job with the root-pinned formatter version.
@@ -80,16 +88,89 @@ fi
 if [[ -f "$ROOT/package.json" ]] && grep -q '"format:check"' "$ROOT/package.json"; then
   echo "==> Checking formatting (Prettier)..."
   (cd "$ROOT" && npm run format:check)
+  checks_run=$((checks_run + 1))
 fi
 
-# --- typecheck (EDIT PER STACK) ----------------------------------------------
-# Vue/TS gotcha from the pilot: a bare `vue-tsc --noEmit` against a
-# solution-style tsconfig.json (empty `files: []`, only `references`) checks an
-# EMPTY program — it always passes and catches nothing. Use build mode (`-b`)
-# so the real project references are checked.
-# echo "==> Backend type-check..."
-# (cd "$ROOT/backend" && npx tsc --noEmit)
-# echo "==> Frontend type-check..."
-# (cd "$ROOT/frontend" && npx vue-tsc -b)
+# --- typecheck (EDIT PER STACK — THIS HOOK REFUSES TO RUN UNTIL YOU DO) ------
+#
+# This block ships UNCONFIGURED and fails closed. That is deliberate, and it is
+# the correction of a real defect rather than a precaution.
+#
+# It used to ship commented out under an "EDIT PER STACK" banner, on the
+# reasonable assumption that each repo would fill it in. Four of the six repos
+# carrying the hook never did — and because every other block here self-skips on
+# its own `[[ -f ... ]]` guard, those hooks ran, exited 0, and announced
+# "Pre-commit checks passed" having verified nothing at all. Nobody noticed,
+# because a silent green gate is indistinguishable from a working one.
+#
+# It stayed harmless only while CI covered the same ground. On 2026-08-25, with
+# GitHub Actions blocked on an account spending limit, this hook was the only
+# gate left: a type error walked into tissue-core's main and failed the deploy
+# pipeline on three consecutive commits. The command that finally caught it —
+# `(cd api && npx tsc --noEmit)` — was sitting commented out four lines below
+# here, differing only in a directory name.
+#
+# Hence: an unedited template is a repo that has not made a decision yet, and
+# the safe reading of "no decision" is not "no typecheck needed".
+#
+# ADAPTING THIS BLOCK — set TYPECHECK to one of:
+#
+#   configured  ... and replace the placeholder in the block below with the
+#                   commands that typecheck this repo's packages.
+#   none        ... this repo genuinely has no typecheck (e.g. a pure-bash
+#                   repo). Nothing runs, and the closing line will say so.
+#
+# Note the residual gap, which is deliberate rather than overlooked: setting
+# `configured` and leaving the placeholder alone passes. Closing that would mean
+# guessing whether an arbitrary command really typechecks anything. The failure
+# this gate exists to stop is the UNMADE decision, not a badly made one.
+TYPECHECK=unconfigured
 
-echo "==> Pre-commit checks passed."
+if [[ "$TYPECHECK" == "unconfigured" ]]; then
+  cat >&2 <<EOF
+
+  ✗ typecheck not configured for this repo
+
+  \`.githooks/pre-commit\` ships with its typecheck block unconfigured, and this
+  repo has not adapted it yet. The hook refuses rather than skipping, because a
+  hook that silently checks nothing still prints "checks passed" — which is how
+  a type error reached a protected branch and broke three deploys.
+
+  Open .githooks/pre-commit, find the TYPECHECK line, and set it to either:
+
+      TYPECHECK=configured   # then fill in the commands just below it, e.g.
+                             #   (cd "\$ROOT/api" && npx tsc --noEmit)
+
+      TYPECHECK=none         # this repo has no typecheck to run
+
+  Commit that change with the repo — it belongs in version control, so every
+  clone inherits the decision instead of re-making it.
+
+  To get past this one commit without deciding:  git commit --no-verify
+
+EOF
+  exit 1
+fi
+
+if [[ "$TYPECHECK" != "none" ]]; then
+  # Vue/TS gotcha from the pilot: a bare `vue-tsc --noEmit` against a
+  # solution-style tsconfig.json (empty `files: []`, only `references`) checks
+  # an EMPTY program — it always passes and catches nothing. Use build mode
+  # (`-b`) so the real project references are checked.
+  #
+  # Examples, to delete once yours are in:
+  #   echo "==> Backend type-check..."
+  #   (cd "$ROOT/backend" && npx tsc --noEmit)
+  #   echo "==> Frontend type-check..."
+  #   (cd "$ROOT/frontend" && npx vue-tsc -b)
+  : # <-- replace with your stack's typecheck commands
+  checks_run=$((checks_run + 1))
+fi
+
+if [[ "$checks_run" -eq 0 ]]; then
+  # Truthful by construction: reachable only when TYPECHECK=none and every other
+  # block self-skipped, i.e. nothing was verified. Saying so is the whole point.
+  echo "==> Pre-commit: no checks configured for this repo — nothing verified."
+else
+  echo "==> Pre-commit checks passed."
+fi

@@ -71,12 +71,63 @@ fi
 # assurance is what let a type error into tissue-core's main on 2026-08-25.
 checks_run=0
 
+# --- docs-only short-circuit -------------------------------------------------
+# This repo's own worktree convention (see the top-level CLAUDE.md) means a
+# markdown-only commit routinely happens in a brand-new worktree that has
+# never had `npm install` run in it — a worklog entry, a doc fix. The
+# typecheck and reuse-inventory blocks below cannot possibly have anything to
+# say about a change that touches no code, but until now they ran anyway and
+# demanded tooling the commit had no use for. That friction was hit for real
+# on 2026-08-29 committing a worklog entry in tissue-core, and the workaround
+# was `--no-verify` — exactly the habit this hook exists to discourage, since
+# it bypasses every other gate along with the one that didn't apply.
+#
+# Judged from the STAGED paths, computed once here so both blocks below can
+# consult it without re-running the diff:
+#
+#   git diff --cached --name-only --no-renames
+#
+# --no-renames is REQUIRED, not cosmetic. With rename detection on, moving
+# api/foo.ts to docs/foo.md prints only the destination path (docs/foo.md) —
+# git treats it as one renamed file, not a delete+add pair — so the commit
+# would read as docs-only while actually relocating real code. Turning
+# detection off makes git report the deletion and the addition as two
+# separate paths, so the code-shaped side of the move still counts.
+#
+# There is also deliberately no --diff-filter here. A commit that only
+# DELETES a .ts file has no destination content to judge by extension, but it
+# is still a real code change — a typecheck can fail or a stale import can
+# break as a direct result of a deletion — so deletions must count toward
+# disqualifying docs-only, not be filtered out of consideration.
+#
+# A path counts as "docs" iff it ends in .md or lives under docs/. EVERY
+# staged path must qualify for the commit to be docs-only; a single
+# non-qualifying path (added, modified, or deleted) disqualifies the whole
+# commit. An empty staged list is NOT docs-only either — there is nothing to
+# judge it by, so it falls through to the normal path below and lets the
+# ordinary (possibly still-unconfigured) typecheck gate decide.
+is_docs_only() {
+  local staged path
+  staged="$(git -C "$ROOT" diff --cached --name-only --no-renames)"
+  [[ -n "$staged" ]] || return 1
+  while IFS= read -r path; do
+    [[ "$path" == *.md || "$path" == docs/* ]] || return 1
+  done <<<"$staged"
+  return 0
+}
+
+DOCS_ONLY=false
+if is_docs_only; then
+  DOCS_ONLY=true
+  echo "==> Docs-only commit — code gates skipped (markdown/docs paths only)."
+fi
+
 # Keep docs/inventory.md (the reuse-surface index) in sync automatically:
 # regenerate from the working tree and stage it, so a commit touching the
 # reuse surface can't leave the index stale (CI drift-checks it; this spares
 # a red build). No-ops when nothing changed. Guarded so the hook works on
 # branches predating the generator.
-if [[ -f "$ROOT/scripts/generate-inventory.mjs" ]]; then
+if [[ "$DOCS_ONLY" != true && -f "$ROOT/scripts/generate-inventory.mjs" ]]; then
   echo "==> Regenerating reuse inventory (docs/inventory.md)..."
   (cd "$ROOT" && node scripts/generate-inventory.mjs)
   git -C "$ROOT" add docs/inventory.md
@@ -85,6 +136,11 @@ fi
 
 # Mirror the CI `format` job with the root-pinned formatter version.
 # Requires a root package.json with a format:check script (Prettier setups).
+#
+# This one runs even on a docs-only commit, deliberately NOT gated on
+# DOCS_ONLY: Prettier formats markdown too, so this gate genuinely applies to
+# a docs-only change and skipping it here would be "tidying" a real check
+# away rather than closing an irrelevant one. Leave it unconditional.
 if [[ -f "$ROOT/package.json" ]] && grep -q '"format:check"' "$ROOT/package.json"; then
   echo "==> Checking formatting (Prettier)..."
   (cd "$ROOT" && npm run format:check)
@@ -124,6 +180,19 @@ fi
 # `configured` and leaving the placeholder alone passes. Closing that would mean
 # guessing whether an arbitrary command really typechecks anything. The failure
 # this gate exists to stop is the UNMADE decision, not a badly made one.
+#
+# The whole block below — including the "unconfigured, refuse" branch and the
+# `prisma generate`-style setup a filled-in TYPECHECK=configured block would
+# run before its actual type-check commands — is skipped outright when
+# DOCS_ONLY is true. None of it can have anything to say about a commit that
+# touches no code, and running it anyway is exactly the friction this
+# short-circuit exists to remove: it would force a fresh, dependency-less
+# worktree to install a toolchain for the sole purpose of typechecking zero
+# files. Skipping does not increment checks_run, and deliberately so — a
+# skipped gate did not verify anything, and the closing summary below must
+# stay truthful about that.
+if [[ "$DOCS_ONLY" != true ]]; then
+
 TYPECHECK=unconfigured
 
 if [[ "$TYPECHECK" == "unconfigured" ]]; then
@@ -167,10 +236,23 @@ if [[ "$TYPECHECK" != "none" ]]; then
   checks_run=$((checks_run + 1))
 fi
 
+fi # DOCS_ONLY
+
+# Truthful by construction. Two distinct ways to verify nothing reach here, and
+# they must not be reported as one: a repo that configured no gates at all, and
+# a docs-only commit whose gates were skipped as inapplicable. Saying "no checks
+# configured" for the second would misdescribe a working hook as an empty one —
+# the same false-assurance failure this summary exists to prevent, inverted.
 if [[ "$checks_run" -eq 0 ]]; then
-  # Truthful by construction: reachable only when TYPECHECK=none and every other
-  # block self-skipped, i.e. nothing was verified. Saying so is the whole point.
-  echo "==> Pre-commit: no checks configured for this repo — nothing verified."
+  if [[ "$DOCS_ONLY" == true ]]; then
+    echo "==> Pre-commit: docs-only commit — no gate here applies to it; nothing verified."
+  else
+    echo "==> Pre-commit: no checks configured for this repo — nothing verified."
+  fi
+elif [[ "$DOCS_ONLY" == true ]]; then
+  # Something ran (formatting), so this is not an empty pass — but the code
+  # gates did not, and an unqualified "checks passed" would imply they had.
+  echo "==> Pre-commit checks passed (code gates skipped: docs-only commit)."
 else
   echo "==> Pre-commit checks passed."
 fi

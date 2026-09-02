@@ -117,6 +117,18 @@ including a CI workflow). A hand-move leaves those dangling, and `check-worklog.
 dangling reference wherever it finds one — so the breakage lands on whoever
 opens the next PR, not on you.
 
+It matches the entry by **filename**, so it finds a citation however the citing
+file spells the path to it — `docs/worklog/x.md` from code at the root,
+`worklog/x.md` from a doc under `docs/`, a bare `x.md` from a sibling entry,
+`../x.md` from one already archived — and it scans every tracked text file
+rather than a list of extensions, so a citation in the code the entry describes
+is repointed like any other. It also fixes the entry's **own** outbound links,
+which the move puts a directory deeper. If the repo holds files that must not
+be edited once written — an applied Prisma migration is checksummed, so
+touching even a comment is drift — name those paths in the script's
+`IMMUTABLE_PATHS`; a citation there is reported and left alone rather than
+silently skipped.
+
 Its one blind spot is a citation in **another repository**. A repo that vendors
 others as submodules names entries in their `docs/worklog/`, and they name
 entries back. Nothing rewrites those and no checker sees them, so grep the other

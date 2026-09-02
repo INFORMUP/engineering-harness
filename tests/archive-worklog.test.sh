@@ -231,6 +231,122 @@ check "an empty Resolution does not block the close" $?
 grep -q "Resolution section is empty" "$TMP/empty.out"
 check "an empty Resolution is warned about — the checker requires one once archived" $?
 
+# ------------------------------------------------------------
+# How a citation is spelled
+# ------------------------------------------------------------
+#
+# An entry is cited by path, and the path depends on where the citing file
+# sits: `docs/worklog/x.md` from code at the root, `worklog/x.md` from a doc
+# under `docs/`, a bare `x.md` from a sibling entry, `../x.md` from one already
+# archived. Matching the first spelling alone reports "0 file(s) cite this
+# entry" over an entry cited from every other — and that count is what a human
+# reads before deciding the move is safe.
+
+make_spelling_repo() { # <dir>
+  local d="$1"
+  make_repo "$d"
+  rm -f "$d/CLAUDE.md" "$d/scripts/ops/thing.sh" "$d/docs/notes.md" "$d/other.md"
+  mkdir -p "$d/docs/worklog/archives" "$d/api/src"
+  # One spelling per citing file, so a failure names which one broke.
+  echo 'see worklog/an-entry.md'                    > "$d/docs/handbook.md"
+  echo 'see an-entry.md'                            > "$d/docs/worklog/sibling.md"
+  echo 'see ../an-entry.md'                         > "$d/docs/worklog/archives/2026-01-01-0000-old.md"
+  # TypeScript: the extension allowlist this replaced covered .md/.sh/.py/
+  # .yaml/.txt/.json, so it missed the language most repos are written in.
+  echo '// see docs/worklog/an-entry.md'            > "$d/api/src/service.ts"
+  # A markdown label is a NAME, not a path. Prefixing it with `archives/` turns
+  # a readable label into a long path, so the label takes the new basename.
+  echo '[an-entry.md](docs/worklog/an-entry.md)'    > "$d/docs/link.md"
+  # Near-misses in both directions: a longer slug that ends with this one, and
+  # a citation already repointed by an earlier run.
+  echo 'docs/worklog/not-an-entry.md'               > "$d/docs/near-miss.md"
+  echo 'docs/worklog/archives/2026-08-19-1344-an-entry.md' > "$d/docs/already.md"
+  # The entry's own outbound links: one to a sibling, one to a neighbour that
+  # is already archived. Both are relative to `docs/worklog/`, and the move
+  # puts the entry a directory deeper.
+  # ...and a mention of its own filename, which must not be repointed: the
+  # entry is not a citation of itself, and the general pass would otherwise
+  # rewrite the archived file to say it lives inside its own directory.
+  python3 - "$d/docs/worklog/an-entry.md" <<'OWN'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace(
+    "## Resolution",
+    "This is `an-entry.md`. See [the sibling](sibling.md) and "
+    "[the old one](archives/2026-01-01-0000-old.md).\n\n## Resolution",
+))
+OWN
+  git -C "$d" add -A && git -C "$d" commit -qm spellings
+}
+
+R8="$TMP/spellings"; make_spelling_repo "$R8"
+( cd "$R8" && WORKLOG_ARCHIVE_TIMESTAMP=2026-08-19-1344 "$SCRIPT" an-entry --apply ) > "$TMP/spellings.out" 2>&1
+check "an --apply run over varied citation spellings exits 0" $?
+
+grep -q 'see worklog/archives/2026-08-19-1344-an-entry.md' "$R8/docs/handbook.md"
+check "a citation written relative to docs/ keeps its prefix and gains the archive hop" $?
+
+grep -q 'see archives/2026-08-19-1344-an-entry.md' "$R8/docs/worklog/sibling.md"
+check "a bare filename cited from a sibling entry is repointed" $?
+
+grep -q 'see ../archives/2026-08-19-1344-an-entry.md' "$R8/docs/worklog/archives/2026-01-01-0000-old.md"
+check "a ../ citation from an already-archived entry is repointed" $?
+
+grep -q '// see docs/worklog/archives/2026-08-19-1344-an-entry.md' "$R8/api/src/service.ts"
+check "a citation in a source file the old extension allowlist missed is repointed" $?
+
+[[ "$(cat "$R8/docs/link.md")" == '[2026-08-19-1344-an-entry.md](docs/worklog/archives/2026-08-19-1344-an-entry.md)' ]]
+check "a markdown link's label takes the new name while its target takes the new path" $?
+
+[[ "$(cat "$R8/docs/near-miss.md")" == 'docs/worklog/not-an-entry.md' ]]
+check "a longer slug ENDING in this one is not touched" $?
+
+[[ "$(cat "$R8/docs/already.md")" == 'docs/worklog/archives/2026-08-19-1344-an-entry.md' ]]
+check "a citation already pointing into archives/ is left alone, not nested again" $?
+
+! grep -rq 'archives/archives' "$R8" --exclude-dir=.git
+check "no citation grows a second archives/ hop" $?
+
+grep -q "5 file(s) cite this entry" "$TMP/spellings.out"
+check "the count covers every spelling, and the entry does not count as citing itself" $?
+
+# The entry's own links are relative to the directory it just left. Nothing
+# else looks for these: check-worklog.sh scans for citations OF archived
+# entries and never for citations FROM them.
+SPELLED="$R8/docs/worklog/archives/2026-08-19-1344-an-entry.md"
+grep -q '\[the sibling\](../sibling.md)' "$SPELLED"
+check "a link to a still-open sibling climbs out of archives/" $?
+
+grep -q '\[the old one\](2026-01-01-0000-old.md)' "$SPELLED"
+check "a link to an already-archived neighbour drops its now-redundant hop" $?
+
+grep -q 'This is `an-entry.md`' "$SPELLED"
+check "the entry's mention of its own filename is left as written" $?
+
+# ------------------------------------------------------------
+# Files a rewrite must not touch
+# ------------------------------------------------------------
+#
+# Some repos hold files that are checksummed once written — Prisma records a
+# hash of each migration when it applies it, so editing one, even a comment,
+# is drift the next `migrate deploy` reports. A repo declares those paths and
+# the script leaves them alone, saying which entries cite from them so the
+# stale name is a known cost rather than a surprise.
+
+R9="$TMP/immutable"; make_repo "$R9"
+mkdir -p "$R9/api/prisma/migrations/20260101_init"
+echo '-- see docs/worklog/an-entry.md' > "$R9/api/prisma/migrations/20260101_init/migration.sql"
+git -C "$R9" add -A && git -C "$R9" commit -qm migration
+( cd "$R9" && WORKLOG_ARCHIVE_TIMESTAMP=2026-08-19-1344 WORKLOG_IMMUTABLE_PATHS=api/prisma/migrations \
+    "$SCRIPT" an-entry --apply ) > "$TMP/immutable.out" 2>&1
+check "an --apply run with declared immutable paths exits 0" $?
+
+[[ "$(cat "$R9/api/prisma/migrations/20260101_init/migration.sql")" == '-- see docs/worklog/an-entry.md' ]]
+check "a declared-immutable file is not rewritten" $?
+
+grep -q 'migration.sql cites this entry' "$TMP/immutable.out"
+check "the operator is told which immutable file keeps naming the old path" $?
+
 echo
 echo "$pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]

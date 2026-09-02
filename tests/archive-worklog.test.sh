@@ -164,6 +164,30 @@ check "a longer entry name that starts with this slug is not touched" $?
 git -C "$R2" diff --cached --name-status | grep -q '^R'
 check "the move is staged as a git rename, preserving the entry's history" $?
 
+# ...and every edit the script makes must be staged along with it. `git mv`
+# renames the INDEX ENTRY, carrying the pre-edit blob under the new name, so a
+# status stamp and citation rewrites made in the working tree are left unstaged
+# behind it. Nothing local catches that: check-worklog.sh reads the working
+# tree and passes, so a `git commit` of the rename lands the move with the OLD
+# status and citations still pointing at the vanished path — and CI is the
+# first thing to see it. Hit for real in a consumer repo on 2026-09-02, where
+# an entry merged as `fixed` while every local signal was green.
+#
+# A herestring, not a pipe, feeds grep -q here: grep -q exits the instant it
+# matches, SIGPIPEing the producer, which under pipefail reads as a failed
+# assertion even though the pattern was found.
+git -C "$R2" diff --quiet
+check "an --apply run leaves nothing unstaged" $?
+
+grep -q '^- \*\*Status:\*\* resolved$' <<<"$(git -C "$R2" show :docs/worklog/archives/2026-08-19-1344-an-entry.md)"
+check "the staged blob carries the stamped status, not the pre-close one" $?
+
+STAGED="$(git -C "$R2" diff --cached --name-only)"
+grep -q '^CLAUDE\.md$' <<<"$STAGED" \
+  && grep -q '^scripts/ops/thing\.sh$' <<<"$STAGED" \
+  && grep -q '^docs/notes\.md$' <<<"$STAGED"
+check "every repointed citation is staged too" $?
+
 R3="$TMP/missing"; make_repo "$R3"
 ( cd "$R3" && "$SCRIPT" no-such-entry --apply ) >/dev/null 2>&1
 [[ $? -ne 0 ]]

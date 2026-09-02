@@ -141,6 +141,12 @@ rewrite_citations() { # <root> <old-path> <new-path> <apply>
             # are escaped because sed reads the pattern as a regex, where a bare
             # `.` would also match `an-entryXmd` in some unrelated file.
             sed -i "s|${old//./\\.}|$new|g" "$root/$f"
+            # Stage it in the same breath. An unstaged rewrite is worse than no
+            # rewrite: the rename below IS staged, so a plain `git commit` lands
+            # the move with every citation still pointing at the vanished path —
+            # precisely the dangling-reference breakage this function exists to
+            # prevent, and it fails the NEXT person's PR rather than this one.
+            git -C "$root" add -- "$f"
         fi
         info "$( [[ "$apply" == "yes" ]] && echo repointed || echo "would repoint" ) $f"
     done < <(citing_files "$root" "$old")
@@ -198,6 +204,12 @@ main() {
     set_next_action "$old_abs" "${next_action:-none — closed ${stamp%-*}}"
     mkdir -p "$root/docs/worklog/archives"
     git -C "$root" mv "$old_rel" "$new_rel"
+    # `git mv` renames the INDEX ENTRY, carrying the blob as it was at HEAD —
+    # it does not re-stage the working tree. Without this the stamps just
+    # written above stay unstaged, and the entry commits with its pre-close
+    # status. That failure is invisible locally, because check-worklog.sh reads
+    # the working tree and passes; CI reads the commit and does not.
+    git -C "$root" add -- "$new_rel"
     ok "archived as $new_rel, status $status, $CITATION_COUNT citation(s) repointed"
 
     # The checker is the backstop for everything this script does not know about

@@ -104,11 +104,20 @@ The template is stack-agnostic; these five integration points are yours:
        // Advisory complexity signal (pilot-validated): warn-level, threshold at
        // SonarJS's default; measure your p95 first so it fires only on outliers.
        "sonarjs/cognitive-complexity": ["warn", 15],
+       // Guard clauses: a branch that returns or throws needs no `else`, and
+       // `else { if … }` is an `else if`. Both are core rules with autofixes.
+       "no-else-return": ["error", { allowElseIf: false }],
+       "no-lonely-if": "error",
      },
    }
    // With Prettier, end the config with eslint-config-prettier (must stay
    // LAST) so ESLint stops fighting the formatter.
    ```
+
+   Python stacks get the same guard-clause and complexity checks from ruff:
+   `select = ["RET", "PLR5501", "C901"]` under `[tool.ruff.lint]`. No rule in
+   either linter flags a function body wrapped whole in `if (ok) { … }` with
+   no `else`; that shape is a house judgment rule in `docs/style.md`.
 
 ## Operating principles (the short version)
 

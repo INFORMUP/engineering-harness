@@ -17,6 +17,14 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL="$SELF_DIR/../scripts/install.sh"
 INSTALL_MODULE="$SELF_DIR/../scripts/install-module.sh"
 
+# install-module.sh needs a module to exist before it reaches the repo guard,
+# and the harness may ship none — so point it at a throwaway fixture module.
+FIXTURE_MODULE="fixture"
+FIXTURE_MODULES_DIR="$(mktemp -d)"
+mkdir -p "$FIXTURE_MODULES_DIR/$FIXTURE_MODULE"
+echo payload >"$FIXTURE_MODULES_DIR/$FIXTURE_MODULE/payload.txt"
+trap 'rm -rf "$FIXTURE_MODULES_DIR"' EXIT
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -87,7 +95,7 @@ root="$(make_repo_with_worktree)"
 check_accepts_worktree \
   "install-module.sh accepts a linked worktree" \
   "install-module.sh" \
-  bash "$INSTALL_MODULE" taskflow "$root/wt"
+  env HARNESS_MODULES_DIR="$FIXTURE_MODULES_DIR" bash "$INSTALL_MODULE" "$FIXTURE_MODULE" "$root/wt"
 rm -rf "$root"
 
 # A plain directory is still refused — the point is to widen the guard to the
@@ -99,7 +107,7 @@ check_rejects_non_repo \
   bash "$INSTALL" "$root/plain"
 check_rejects_non_repo \
   "install-module.sh still refuses a directory that is not a checkout" \
-  bash "$INSTALL_MODULE" taskflow "$root/plain"
+  env HARNESS_MODULES_DIR="$FIXTURE_MODULES_DIR" bash "$INSTALL_MODULE" "$FIXTURE_MODULE" "$root/plain"
 rm -rf "$root"
 
 echo

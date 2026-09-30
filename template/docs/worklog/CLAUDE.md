@@ -137,20 +137,20 @@ repo by hand when closing an entry you know it references.
 Do not delete resolved entries. The archive is where trends across many entries
 become visible, which is half the reason the log exists.
 
-## What belongs here vs. in TaskFlow
+## What belongs here vs. in the issue tracker
 
 The test is **not** size or effort — it's whether someone outside the session needs
 to act on the item.
 
-- **TaskFlow** — needs scheduling, a review gate, acceptance criteria, or is
+- **Issue tracker** — needs scheduling, a review gate, acceptance criteria, or is
   tracked as a deliverable. Work someone could be assigned.
 - **Worklog** — everything else, *including things that will never be done*.
-  "I looked at this, here's why it's fine" is a legitimate entry, and TaskFlow
-  has no resting place for it.
+  "I looked at this, here's why it's fine" is a legitimate entry, and the
+  tracker has no resting place for it.
 
-**Promote by link, not by copy.** When an entry graduates, the TaskFlow task body
-cites the worklog path and the entry records the task id. TaskFlow owns status and
-scheduling; this directory owns evidence and reasoning. Copy the reasoning into
+**Promote by link, not by copy.** When an entry graduates, the tracker task body
+cites the worklog path and the entry records the task id. The tracker owns status
+and scheduling; this directory owns evidence and reasoning. Copy the reasoning into
 both and the current version ends up in whichever was written last.
 
 **The same rule governs `CLAUDE.md`, and it is easier to break there.** A finding

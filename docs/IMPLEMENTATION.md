@@ -234,7 +234,7 @@ PR review sees the codebase one diff at a time; audits see what no diff shows �
 | Complexity hotspots | churn × file size ranking | refactor candidates worth an IMP task, with rationale |
 | Docs accuracy | drift-job history, `last-verified` ages | deep pass beyond the weekly diff-scoped check |
 
-Output: `docs/audits/YYYY-MM.md` (committed via PR, senior approves) — findings ranked by severity, each with a disposition column. **Every accepted finding becomes a TaskFlow task** (BUG or IMP flow) and flows through the normal harness; an audit that doesn't end in tasks is a report nobody read. The report opens with a delta-vs-last-audit section so trends (suppression count, cold-spot count, dep vulnerabilities) are one glance.
+Output: `docs/audits/YYYY-MM.md` (committed via PR, senior approves) — findings ranked by severity, each with a disposition column. **Every accepted finding becomes an issue-tracker task** (bug or improvement) and flows through the normal harness; an audit that doesn't end in tasks is a report nobody read. The report opens with a delta-vs-last-audit section so trends (suppression count, cold-spot count, dep vulnerabilities) are one glance.
 
 **Quarterly deep audit** (senior-driven, on their Max subscription — consistent with §3.10): the senior runs the `audit` skill locally with full context plus `/code-review ultra` over the highest-risk areas the monthly reports flagged, and reviews the quarter's ADRs against what actually got built. Deliverable: same report format, plus proposed CLAUDE.md/lint-rule changes — the codify-the-findings flywheel applied to the whole codebase instead of one PR.
 
@@ -328,4 +328,4 @@ whether the reuse gate is advisory or binding during rollout.
 3. **Plan-required path list** — confirm/adjust the proposed initial set (§3.6).
 4. **Claude-review timing** — advisory weeks 1–2 then required (recommended), or required from day one?
 5. **CI auth source** — senior's subscription OAuth token (recommended for pilot; shares the senior's rate limits) with a capped API key as the documented fallback tripwire?
-6. **Audit cadence** — monthly automated + quarterly deep (recommended, §3.11), and confirm audit findings are filed as TaskFlow BUG/IMP tasks?
+6. **Audit cadence** — monthly automated + quarterly deep (recommended, §3.11), and confirm audit findings are filed as issue-tracker tasks?

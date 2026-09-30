@@ -63,9 +63,7 @@ the base template can stay honest about being universal:
 scripts/install-module.sh <module> ~/src/your-repo   # no args: lists modules
 ```
 
-| Module | What it does |
-|---|---|
-| [`taskflow`](modules/taskflow/README.md) | Every PR names the tracked item it implements (or declines one with a reason), and PRs that implement a task are linked to it automatically — so the tracker can answer "what shipped but was never closed". |
+No modules ship today.
 
 ## The contract your repo provides
 

@@ -10,7 +10,8 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-MODULES="$DIR/modules"
+# Overridable so the self-tests can install a fixture module.
+MODULES="${HARNESS_MODULES_DIR:-$DIR/modules}"
 
 MODULE="${1:-}"
 TARGET="${2:-}"

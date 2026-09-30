@@ -147,6 +147,32 @@ if [[ -f "$ROOT/package.json" ]] && grep -q '"format:check"' "$ROOT/package.json
   checks_run=$((checks_run + 1))
 fi
 
+# Refuses the commit when a package the typecheck needs has no node_modules.
+# A bare `npx <tool>` in a dependency-less tree does not fail — it downloads
+# whatever version of <tool> is newest and runs that (tissue-core 2026-09-30:
+# `npx prisma generate` fetched prisma@8.0.0-rc.19). Checking first turns that
+# into one clear refusal instead of a stray install followed by `tsc: not found`.
+require_installed_deps() { # <package-dir>...
+  local missing=() dir
+  for dir in "$@"; do
+    [[ -d "$ROOT/$dir/node_modules" ]] || missing+=("$dir")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && return 0
+  cat >&2 <<EOF
+
+  ✗ dependencies not installed in: ${missing[*]}
+
+  The typecheck needs them, and running it anyway would let npx fetch an
+  unpinned tool from the registry. Install first:
+
+      ./setup-worktree.sh
+
+  To get past this one commit without checking:  git commit --no-verify
+
+EOF
+  exit 1
+}
+
 # --- typecheck (EDIT PER STACK — THIS HOOK REFUSES TO RUN UNTIL YOU DO) ------
 #
 # This block ships UNCONFIGURED and fails closed. That is deliberate, and it is
@@ -208,7 +234,7 @@ if [[ "$TYPECHECK" == "unconfigured" ]]; then
   Open .githooks/pre-commit, find the TYPECHECK line, and set it to either:
 
       TYPECHECK=configured   # then fill in the commands just below it, e.g.
-                             #   (cd "\$ROOT/api" && npx tsc --noEmit)
+                             #   (cd "\$ROOT/api" && npx --no-install tsc --noEmit)
 
       TYPECHECK=none         # this repo has no typecheck to run
 
@@ -227,11 +253,15 @@ if [[ "$TYPECHECK" != "none" ]]; then
   # an EMPTY program — it always passes and catches nothing. Use build mode
   # (`-b`) so the real project references are checked.
   #
-  # Examples, to delete once yours are in:
+  # Examples, to delete once yours are in. Keep `require_installed_deps` first
+  # and `--no-install` on every npx: without them a dependency-less worktree
+  # silently downloads an unpinned tool from the registry and runs that, instead
+  # of failing (see the helper above); with them a missing tool is an error.
+  #   require_installed_deps backend frontend
   #   echo "==> Backend type-check..."
-  #   (cd "$ROOT/backend" && npx tsc --noEmit)
+  #   (cd "$ROOT/backend" && npx --no-install tsc --noEmit)
   #   echo "==> Frontend type-check..."
-  #   (cd "$ROOT/frontend" && npx vue-tsc -b)
+  #   (cd "$ROOT/frontend" && npx --no-install vue-tsc -b)
   : # <-- replace with your stack's typecheck commands
   checks_run=$((checks_run + 1))
 fi

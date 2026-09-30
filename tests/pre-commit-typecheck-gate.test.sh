@@ -135,6 +135,68 @@ grep -q "Pre-commit checks passed" "$TMP/out"
 check "...and NOW 'checks passed' is truthful, so it prints" $?
 
 
+# --- a typecheck never runs in a tree without installed dependencies -----------
+# A bare `npx <tool>` in a dependency-less worktree does not fail: it downloads
+# the newest published <tool> and runs that (tissue-core 2026-09-30: `npx prisma
+# generate` fetched prisma@8.0.0-rc.19). So the template's helper must refuse
+# BEFORE any typecheck command runs. The marker file is what proves "before":
+# a refusal that still ran the command would leave it behind.
+
+# <workdir> <typecheck lines...> — swap the placeholder for real lines.
+fill_typecheck_block() {
+  local work=$1; shift
+  local body; body="$(printf '  %s\n' "$@")"
+  awk -v body="$body" '/^  : # <-- replace with your stack/ { print body; next } { print }' \
+    "$work/.githooks/pre-commit" > "$work/.githooks/pre-commit.new"
+  mv "$work/.githooks/pre-commit.new" "$work/.githooks/pre-commit"
+  chmod +x "$work/.githooks/pre-commit"
+  git_c -C "$work" commit -qam "fill typecheck block" --no-verify >/dev/null 2>&1 || true
+}
+
+# node_modules must never be staged itself, or `mkdir node_modules` below would
+# turn into a diff the commit then carries.
+new_deps_repo() { # <name> <typecheck lines...>
+  local name=$1; shift
+  local work; work="$(new_repo "$name" "$SET_CONFIGURED")"
+  echo node_modules > "$work/.gitignore"
+  fill_typecheck_block "$work" "$@"
+  echo "$work"
+}
+
+MARK='touch "$ROOT/.typecheck-ran"'
+
+W="$(new_deps_repo deps_missing 'require_installed_deps pkg' "$MARK")"
+rc="$(try_commit "$W")"
+check "no node_modules: the commit is refused" "$([[ $rc -ne 0 ]] && echo 0 || echo 1)"
+grep -q "dependencies not installed in: pkg" "$TMP/out"
+check "...and the refusal names the package" $?
+grep -q "setup-worktree.sh" "$TMP/out"
+check "...and points at the installer" $?
+grep -q -- "--no-verify" "$TMP/out"
+check "...and names the escape hatch" $?
+check "...and the typecheck command never ran" \
+  "$([[ ! -e "$W/.typecheck-ran" ]] && echo 0 || echo 1)"
+
+W="$(new_deps_repo deps_present 'require_installed_deps pkg' "$MARK")"
+mkdir -p "$W/pkg/node_modules"
+before="$(n_commits "$W")"
+rc="$(try_commit "$W")"
+check "node_modules present: healthy path exits 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+check "...and the commit landed" \
+  "$([[ "$(n_commits "$W")" -eq $((before+1)) ]] && echo 0 || echo 1)"
+check "...and the typecheck command DID run" \
+  "$([[ -e "$W/.typecheck-ran" ]] && echo 0 || echo 1)"
+
+W="$(new_deps_repo deps_partial 'require_installed_deps backend frontend' "$MARK")"
+mkdir -p "$W/backend/node_modules"
+rc="$(try_commit "$W")"
+check "one of two packages missing: refused" "$([[ $rc -ne 0 ]] && echo 0 || echo 1)"
+grep -q "dependencies not installed in: frontend$" "$TMP/out"
+check "...and the refusal names only the missing package" $?
+check "...and the typecheck command never ran" \
+  "$([[ ! -e "$W/.typecheck-ran" ]] && echo 0 || echo 1)"
+
+
 # --- the escape hatch still works ---------------------------------------------
 # Fail-closed must not mean fail-stuck: a mid-rebase fixup on a machine without
 # node_modules has to remain possible.

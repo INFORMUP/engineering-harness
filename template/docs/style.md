@@ -38,6 +38,11 @@ Style questions resolve in this order — first authority that answers, wins:
   (invariants, gotchas, cross-module contracts), not *what the next line does*.
 - **Test names describe behavior, not implementation.** `rejects transition
   without permission`, not `calls checkPermission`.
+- **Exit early; don't wrap the happy path in a condition.** Handle the
+  invalid, empty or refused case first and return, throw or `continue`, so
+  the main path runs unindented to the end. Lint catches an `else` after a
+  `return` and scores nesting, but not a body wrapped whole in
+  `if (ok) { … }` — that one is a review call.
 
 ## What reviewers check against the parent guide
 

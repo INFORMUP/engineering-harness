@@ -81,7 +81,7 @@ findable — write it down now, while it is reconstructed and fresh.
   follows an established pattern is not a new decision — it is the old one working.
   If the pattern itself was never recorded, record *that*, once.
 
-## Relationship to the worklog, this repo's CLAUDE.md, and TaskFlow
+## Relationship to the worklog, this repo's CLAUDE.md, and the issue tracker
 
 Four places hold reasoning; the boundary is what state the item is in.
 
@@ -90,7 +90,7 @@ Four places hold reasoning; the boundary is what state the item is in.
 | `docs/worklog/` | An issue found in passing, or an open question — with evidence and rejected approaches | **Open** | Humans only |
 | `docs/adr/` | A decision that has been made, with the options that lost | **Settled** | Immutable; superseded, never edited |
 | `/CLAUDE.md` | A settled constraint whose reasoning fits in a bullet | Settled, short | Living — edited freely |
-| TaskFlow | Work someone outside the session must act on | Scheduled | Task workflow |
+| Issue tracker | Work someone outside the session must act on | Scheduled | Task workflow |
 
 Two rules follow:
 
@@ -107,7 +107,7 @@ links to is an ADR nobody opens.
 resolution establishes a lasting constraint, write the ADR for the constraint and
 the rejected option; the archived entry keeps the evidence and the dead ends, and
 the two cite each other. Copy the reasoning into both and the current version lives
-in whichever was edited last — the same failure the worklog↔TaskFlow rule exists to
+in whichever was edited last — the same failure the worklog↔tracker rule exists to
 prevent.
 
 Most worklog entries never become ADRs. Resolving as "looked at this, it's fine" is

@@ -147,6 +147,32 @@ if [[ -f "$ROOT/package.json" ]] && grep -q '"format:check"' "$ROOT/package.json
   checks_run=$((checks_run + 1))
 fi
 
+# Refuses the commit when a package the typecheck needs has no node_modules.
+# A bare `npx <tool>` in a dependency-less tree does not fail — it downloads
+# whatever version of <tool> is newest and runs that (tissue-core 2026-09-30:
+# `npx prisma generate` fetched prisma@8.0.0-rc.19). Checking first turns that
+# into one clear refusal instead of a stray install followed by `tsc: not found`.
+require_installed_deps() { # <package-dir>...
+  local missing=() dir
+  for dir in "$@"; do
+    [[ -d "$ROOT/$dir/node_modules" ]] || missing+=("$dir")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && return 0
+  cat >&2 <<EOF
+
+  ✗ dependencies not installed in: ${missing[*]}
+
+  The typecheck needs them, and running it anyway would let npx fetch an
+  unpinned tool from the registry. Install first:
+
+      ./setup-worktree.sh
+
+  To get past this one commit without checking:  git commit --no-verify
+
+EOF
+  exit 1
+}
+
 # --- typecheck (EDIT PER STACK — THIS HOOK REFUSES TO RUN UNTIL YOU DO) ------
 #
 # This block ships UNCONFIGURED and fails closed. That is deliberate, and it is
@@ -191,32 +217,6 @@ fi
 # files. Skipping does not increment checks_run, and deliberately so — a
 # skipped gate did not verify anything, and the closing summary below must
 # stay truthful about that.
-# Refuses the commit when a package the typecheck needs has no node_modules.
-# A bare `npx <tool>` in a dependency-less tree does not fail — it downloads
-# whatever version of <tool> is newest and runs that (tissue-core 2026-09-30:
-# `npx prisma generate` fetched prisma@8.0.0-rc.19). Checking first turns that
-# into one clear refusal instead of a stray install followed by `tsc: not found`.
-require_installed_deps() { # <package-dir>...
-  local missing=() dir
-  for dir in "$@"; do
-    [[ -d "$ROOT/$dir/node_modules" ]] || missing+=("$dir")
-  done
-  [[ ${#missing[@]} -eq 0 ]] && return 0
-  cat >&2 <<EOF
-
-  ✗ dependencies not installed in: ${missing[*]}
-
-  The typecheck needs them, and running it anyway would let npx fetch an
-  unpinned tool from the registry. Install first:
-
-      ./setup-worktree.sh
-
-  To get past this one commit without checking:  git commit --no-verify
-
-EOF
-  exit 1
-}
-
 if [[ "$DOCS_ONLY" != true ]]; then
 
 TYPECHECK=unconfigured

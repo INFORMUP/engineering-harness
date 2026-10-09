@@ -12,7 +12,11 @@
 
 ## Decision
 
-<!-- One paragraph. What we will do. -->
+<!-- One paragraph. What we will do. If a person made this call with a
+     condition, scope limit, or reason attached, quote those words verbatim
+     and attributed (> "…" — name, YYYY-MM-DD) rather than paraphrasing
+     them; see docs/worklog/CLAUDE.md, "Record a ruling in the decider's
+     words". -->
 
 ## Options considered
 

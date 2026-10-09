@@ -161,6 +161,30 @@ two, plus the path to the entry: "re-enabling this distribution re-opens
 unauthenticated read of the whole bucket — see `docs/worklog/<entry>.md`". The
 history, the probe output, and the reasoning stay here.
 
+## Record a ruling in the decider's words
+
+When a person settles something an entry depends on, name them — never write their
+decision in the same voice as the agent's own reasoning. How much of their wording
+to keep depends on what it carries:
+
+- **A bare choice** — yes/no, or a pick from options laid out for them — gets one
+  line: `Chose B over A — <name>, YYYY-MM-DD`. Quoting "yes" preserves nothing.
+- **A condition, a scope limit, or a reason** — quote it verbatim, as an attributed,
+  dated blockquote: `> "…" — <name>, YYYY-MM-DD`. Paraphrase is where a ruling
+  drifts: "only for security-urgent matters" softens into "avoid changing it", and a
+  reconstructed *why* is indistinguishable from one the agent inferred. The reason
+  is also what tells a later reader whether the ruling reaches a case it was not
+  made for, so it is the part least safe to summarize.
+- **Quote the operative sentences, not the message.** Trim with `[…]` and drop
+  asides; the quote is going into a committed file.
+- **Pair the quote with what it answered.** "Yes, but not on prod" means nothing
+  alone. Give the question or options it responded to, and say who framed them.
+- **A later ruling replaces the earlier quote in the head**, per *Correct above the
+  rule* — the superseded one moves to the log, and the head says which is in force.
+
+The same applies wherever a ruling lands: an ADR's Decision section, a plan, a PR
+body.
+
 ## Rules
 
 - **An entry belongs to the repo whose code it describes.** An issue in a vendored

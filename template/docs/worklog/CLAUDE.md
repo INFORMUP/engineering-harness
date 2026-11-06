@@ -139,6 +139,9 @@ become visible, which is half the reason the log exists.
 
 ## What belongs here vs. in the issue tracker
 
+The issue tracker is **Docket** (`INFORMUP/docket`); TaskFlow no longer fills that
+role, and GitHub Issues are not used. Docket holds engineering work only.
+
 The test is **not** size or effort — it's whether someone outside the session needs
 to act on the item.
 
@@ -148,10 +151,14 @@ to act on the item.
   "I looked at this, here's why it's fine" is a legitimate entry, and the
   tracker has no resting place for it.
 
-**Promote by link, not by copy.** When an entry graduates, the tracker task body
-cites the worklog path and the entry records the task id. The tracker owns status
+**Promote by link, not by copy.** When an entry graduates, the Docket task lists the
+entry in its `worklogs` field and the entry records the task id. Docket owns status
 and scheduling; this directory owns evidence and reasoning. Copy the reasoning into
 both and the current version ends up in whichever was written last.
+
+**A person promotes; an agent proposes.** A Docket task must name who requested it
+and quote their words, so an agent that finds a qualifying item writes the entry and
+says it qualifies, rather than filing a task from its own finding.
 
 **The same rule governs `CLAUDE.md`, and it is easier to break there.** A finding
 worth remembering is tempting to restate in the context file every session loads —

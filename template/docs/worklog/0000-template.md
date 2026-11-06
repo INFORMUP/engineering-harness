@@ -4,7 +4,7 @@
 - **Status:** open <!-- open | fixed | resolved | superseded — one bare word, nothing else -->
 - **Next action:** <what has to happen next, and whose call it is — prose belongs here, not in the status slot>
 - **Found:** <YYYY-MM-DD>, while <what you were actually doing when this surfaced>
-- **Escalated:** no <!-- or: <tracker task id> — see "promote by link, not by copy" in CLAUDE.md -->
+- **Escalated:** no <!-- or: <Docket task id> — see "promote by link, not by copy" in CLAUDE.md -->
 
 <!-- `In one line:` and `Next action:` are the lede, and they are not optional.
 
